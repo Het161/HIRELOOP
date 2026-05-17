@@ -1,0 +1,1234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>hireloop — terminal interview practice</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;1,400;1,500&display=swap" rel="stylesheet" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          bg: "#0d0e0c",
+          surface: "#16181a",
+          hover: "#1a1d1a",
+          primary: "#d4d4cf",
+          muted: "#6b7066",
+          dim: "#3d423a",
+          accent: "#7ec96f",
+          terra: "#d97757",
+          bd: "#2a2d28",
+          red: "#c8553d",
+        },
+        fontFamily: {
+          mono: ['"JetBrains Mono"', "ui-monospace", "monospace"],
+          sans: ['"IBM Plex Sans"', "ui-sans-serif", "system-ui", "sans-serif"],
+        },
+      },
+    },
+  };
+</script>
+<style>
+  :root {
+    --bg:#0d0e0c; --surface:#16181a; --hover:#1a1d1a;
+    --primary:#d4d4cf; --muted:#6b7066; --dim:#3d423a;
+    --accent:#7ec96f; --terra:#d97757; --bd:#2a2d28; --red:#c8553d;
+  }
+  * { box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
+  body {
+    background:var(--bg); color:var(--primary);
+    font-family:"JetBrains Mono",ui-monospace,monospace;
+    font-size:14px; line-height:1.65; font-weight:400;
+    -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+    padding-top:37px; padding-bottom:29px;
+    margin:0; overflow-x:hidden;
+  }
+  ::selection { background:var(--accent); color:#0d0e0c; }
+  ::-webkit-scrollbar { width:9px; height:9px; }
+  ::-webkit-scrollbar-track { background:var(--bg); }
+  ::-webkit-scrollbar-thumb { background:var(--bd); }
+  ::-webkit-scrollbar-thumb:hover { background:var(--muted); }
+
+  .wrap { max-width:1180px; margin:0 auto; padding-left:24px; padding-right:24px; }
+  @media (min-width:768px){ .wrap { padding-left:44px; padding-right:44px; } }
+
+  .ed { font-family:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif; }
+
+  /* ---- cursor blink ---- */
+  .cursor { display:inline-block; color:var(--terra); animation:blink 1.05s step-end infinite; }
+  @keyframes blink { 0%,49%{opacity:1} 50%,100%{opacity:0} }
+
+  /* ---- pulsing status dot ---- */
+  .pdot { animation:pulse 1.8s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.25} }
+
+  /* ---- reveal on scroll ---- */
+  .reveal { opacity:0; transform:translateY(14px); transition:opacity .7s cubic-bezier(.16,1,.3,1),transform .7s cubic-bezier(.16,1,.3,1); }
+  .reveal.in { opacity:1; transform:none; }
+  @media (prefers-reduced-motion:reduce){ .reveal{opacity:1;transform:none} .cursor{animation:none} .pdot{animation:none} }
+
+  /* ---- terminal bracket button ---- */
+  .tbtn {
+    display:inline-flex; align-items:center; gap:.6ch;
+    border:1px solid var(--bd); background:transparent; color:var(--primary);
+    padding:11px 18px; font-family:inherit; font-size:13px; font-weight:400;
+    cursor:pointer; transition:background .13s ease,color .13s ease,border-color .13s ease;
+    white-space:nowrap;
+  }
+  .tbtn .br { color:var(--terra); transition:color .13s ease; }
+  .tbtn .ret { color:var(--terra); transition:color .13s ease; }
+  .tbtn:hover { background:var(--accent); color:#0d0e0c; border-color:var(--accent); }
+  .tbtn:hover .br, .tbtn:hover .ret { color:#0d0e0c; }
+  .tbtn-danger:hover { background:var(--red); border-color:var(--red); color:#0d0e0c; }
+  .tbtn-ghost:hover { background:var(--hover); color:var(--primary); border-color:var(--muted); }
+  .tbtn-ghost:hover .br,.tbtn-ghost:hover .ret { color:var(--terra); }
+  .tbtn[disabled] { color:var(--dim); border-color:var(--bd); cursor:not-allowed; }
+  .tbtn[disabled] .br,.tbtn[disabled] .ret { color:var(--dim); }
+  .tbtn[disabled]:hover { background:transparent; color:var(--dim); border-color:var(--bd); }
+
+  /* ---- bracket link ---- */
+  .blink-a { color:var(--muted); cursor:pointer; transition:color .12s ease; white-space:nowrap; }
+  .blink-a .br { color:var(--dim); transition:color .12s ease; }
+  .blink-a:hover { color:var(--primary); }
+  .blink-a:hover .br { color:var(--terra); }
+
+  /* ---- titled box ---- */
+  .tbox { position:relative; border:1px solid var(--bd); }
+  .tbox > .tbox-t {
+    position:absolute; top:-0.72em; left:14px; background:var(--bg);
+    padding:0 9px; font-size:12px; color:var(--muted); letter-spacing:.02em;
+  }
+  .tbox > .tbox-r {
+    position:absolute; top:-0.72em; right:14px; background:var(--bg);
+    padding:0 9px; font-size:12px;
+  }
+
+  /* ---- ascii full-width rule ---- */
+  .arule { color:var(--dim); white-space:nowrap; overflow:hidden; user-select:none; line-height:1; font-size:14px; }
+
+  /* ---- selectable list row (roles) ---- */
+  .rrow {
+    display:flex; align-items:center; gap:10px; cursor:pointer;
+    padding:5px 10px 5px 8px; border-left:2px solid transparent;
+    transition:background .1s ease,border-color .1s ease;
+  }
+  .rrow .pre { color:var(--dim); width:2.2ch; flex:none; }
+  .rrow .arrow { color:var(--terra); opacity:0; transition:opacity .1s ease; flex:none; }
+  .rrow:hover { background:var(--hover); }
+  .rrow:hover .arrow { opacity:1; }
+  .rrow:hover .pre { color:var(--terra); }
+  .rrow.sel { border-left-color:var(--accent); background:#13170f; }
+  .rrow.sel .pre { color:var(--accent); }
+  .rrow.sel .arrow { opacity:0; }
+
+  /* ---- grid role cell ---- */
+  .gcell { display:flex; align-items:baseline; gap:8px; padding:4px 0; }
+  .gcell:hover .gname { color:var(--accent); }
+  .gname { color:var(--primary); transition:color .12s ease; }
+
+  /* ---- transcript ---- */
+  .tmsg { opacity:0; transform:translateY(6px); animation:msgin .45s cubic-bezier(.16,1,.3,1) forwards; }
+  @keyframes msgin { to { opacity:1; transform:none; } }
+
+  /* ---- toast ---- */
+  #toast {
+    position:fixed; right:20px; bottom:44px; z-index:120;
+    background:var(--surface); border:1px solid var(--bd);
+    color:var(--primary); padding:9px 15px; font-size:13px;
+    transform:translateY(16px); opacity:0; pointer-events:none;
+    transition:transform .3s cubic-bezier(.16,1,.3,1),opacity .3s ease;
+  }
+  #toast.show { transform:translateY(0); opacity:1; }
+
+  /* ---- tooltip ---- */
+  .rtip {
+    position:absolute; z-index:60; top:calc(100% + 10px); left:0;
+    background:var(--surface); border:1px solid var(--bd);
+    padding:12px 14px; font-size:12px; width:300px; max-width:78vw;
+    display:none;
+  }
+  .rtip.open { display:block; }
+
+  .page { display:none; }
+  .page.active { display:block; }
+
+  .seg { color:var(--dim); padding:0 8px; }
+  .qhead { cursor:pointer; }
+  .model-ans { display:none; }
+  .model-ans.open { display:block; }
+</style>
+</head>
+<body>
+
+<!-- ════════════════ FIXED TAB STRIP ════════════════ -->
+<div id="tabstrip" class="fixed top-0 left-0 right-0 z-[100] bg-surface border-b border-bd" style="height:37px;">
+  <div class="flex items-stretch h-full text-[12.5px] overflow-x-auto">
+    <button data-tab="landing"  class="tab flex items-center gap-2 px-4 border-r border-bd whitespace-nowrap">~/hireloop <span class="dot text-accent">●</span></button>
+    <button data-tab="setup"    class="tab flex items-center gap-2 px-4 border-r border-bd whitespace-nowrap">~/setup <span class="dot text-dim">○</span></button>
+    <button data-tab="interview" class="tab flex items-center gap-2 px-4 border-r border-bd whitespace-nowrap">~/interview <span class="dot text-dim">○</span></button>
+    <button data-tab="report"   class="tab flex items-center gap-2 px-4 border-r border-bd whitespace-nowrap">~/report <span class="dot text-dim">○</span></button>
+    <div class="hidden sm:flex items-center ml-auto px-4 text-dim whitespace-nowrap select-none">tmux · 1 session · ⌥</div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- PAGE 1 — LANDING                                               -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section id="page-landing" class="page active">
+
+  <!-- landing sub-header -->
+  <div class="border-b border-bd">
+    <div class="wrap flex items-center justify-between gap-4 py-2.5 text-[12.5px]">
+      <div class="text-muted truncate">
+        <span class="text-terra">❯</span> hireloop v1.0.0
+        <span class="seg">─</span>ai-powered interview practice
+        <span class="seg hidden sm:inline">─</span><span class="hidden sm:inline">built by het</span>
+      </div>
+      <div class="flex items-center gap-4 flex-none">
+        <span class="blink-a" data-ext="github"><span class="br">[</span> github <span class="br">]</span></span>
+        <span class="blink-a hidden sm:inline" data-ext="docs"><span class="br">[</span> docs <span class="br">]</span></span>
+        <span class="blink-a" data-ext="theme"><span class="br">[</span> theme <span class="br">]</span></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- hero -->
+  <div class="wrap pt-24 sm:pt-36 pb-20">
+    <div class="text-dim text-[13px] mb-7 select-none">&gt; ./start-interview --role any --mode voice|text</div>
+
+    <h1 class="font-medium tracking-tight" style="font-size:clamp(52px,9vw,96px); line-height:1.04;">
+      <span id="hero-type"></span><span class="cursor">▮</span>
+    </h1>
+
+    <p class="text-muted max-w-[640px] mt-8 text-[14.5px] leading-relaxed">
+      &gt; A senior engineer is waiting on the other end. So is an honest scoring
+      system. Pick a role, pick a mode, press start.
+    </p>
+
+    <div class="mt-10 flex flex-wrap items-center gap-5">
+      <button class="tbtn" id="cta-start">
+        <span class="br">[</span> press enter to start <span class="ret">↵</span> <span class="br">]</span>
+      </button>
+      <span class="text-dim text-[13px] hidden sm:inline">or try one of these →</span>
+    </div>
+
+    <div class="mt-5 flex flex-wrap gap-3 text-[12.5px]" id="role-chips">
+      <div class="relative">
+        <button class="chip border border-bd px-3 py-1.5 text-muted hover:text-terra transition-colors" data-role="frontend-developer">roles/frontend-developer.md</button>
+        <div class="rtip"></div>
+      </div>
+      <div class="relative">
+        <button class="chip border border-bd px-3 py-1.5 text-muted hover:text-terra transition-colors" data-role="product-manager">roles/product-manager.md</button>
+        <div class="rtip"></div>
+      </div>
+      <div class="relative">
+        <button class="chip border border-bd px-3 py-1.5 text-muted hover:text-terra transition-colors" data-role="ai-engineer">roles/ai-engineer.md</button>
+        <div class="rtip"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ascii divider -->
+  <div class="wrap"><div class="arule" data-fill="═">═══════════════════</div></div>
+
+  <!-- how it works -->
+  <div class="wrap py-20 reveal">
+    <div class="mb-9 text-[15px]"><span class="text-dim">## </span><span class="font-medium">how-it-works</span></div>
+    <pre class="text-[13.5px] leading-[2] text-muted m-0 whitespace-pre-wrap">
+<span class="text-dim">├─</span> <span class="text-terra">01</span>  <span class="text-primary">pick a role and seniority</span>
+<span class="text-dim">│</span>      <span class="text-dim">└─</span> 20+ tech roles · junior to senior
+<span class="text-dim">├─</span> <span class="text-terra">02</span>  <span class="text-primary">get interviewed by the AI</span>
+<span class="text-dim">│</span>      <span class="text-dim">└─</span> voice or text · adapts to your answers · 30 min
+<span class="text-dim">└─</span> <span class="text-terra">03</span>  <span class="text-primary">read the honest debrief</span>
+       <span class="text-dim">└─</span> scored breakdown · per-question feedback · improvement plan</pre>
+  </div>
+
+  <div class="wrap"><div class="arule" data-fill="─">───────────────────</div></div>
+
+  <!-- available roles -->
+  <div class="wrap py-20 reveal">
+    <div class="mb-2 text-[15px]"><span class="text-dim">## </span><span class="font-medium">available-roles</span></div>
+    <div class="text-dim text-[12.5px] mb-8">❯ ls roles/ — <span id="role-count">20</span> files</div>
+    <div id="role-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-10 gap-y-1 text-[13px]"></div>
+  </div>
+
+  <div class="wrap"><div class="arule" data-fill="─">───────────────────</div></div>
+
+  <!-- why hireloop — editorial moment -->
+  <div class="wrap py-24 reveal">
+    <div class="text-dim text-[12.5px] mb-8 select-none">❯ why-hireloop</div>
+    <blockquote class="ed italic text-primary leading-[1.5] max-w-[820px]" style="font-size:clamp(22px,3.4vw,34px);">
+      &ldquo;The best way to prepare for an interview is to have one — even with
+      an AI on the other side.&rdquo;
+    </blockquote>
+    <div class="text-muted text-[13px] mt-6">— het, building in public</div>
+  </div>
+
+  <!-- live activity ticker -->
+  <div class="border-y border-bd bg-surface">
+    <div class="wrap py-3 text-[12.5px] text-muted overflow-x-auto whitespace-nowrap">
+      <span class="text-dim">❯ STATUS</span>
+      <span class="text-terra pdot ml-3">●</span>
+      <span class="ml-3">3,127 interviews completed this week</span>
+      <span class="seg">·</span>avg score 71
+      <span class="seg">·</span>top role: backend developer
+    </div>
+  </div>
+
+  <!-- footer -->
+  <footer class="wrap py-20">
+    <div class="text-dim text-[12.5px] mb-8 select-none">❯ cat /etc/hireloop.conf</div>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-10 text-[13px]">
+      <div>
+        <div class="text-muted mb-3">[ links ]</div>
+        <ul class="space-y-1.5 text-dim">
+          <li class="hover:text-primary cursor-pointer transition-colors">→ start an interview</li>
+          <li class="hover:text-primary cursor-pointer transition-colors">→ browse roles</li>
+          <li class="hover:text-primary cursor-pointer transition-colors">→ sample report</li>
+        </ul>
+      </div>
+      <div>
+        <div class="text-muted mb-3">[ system ]</div>
+        <ul class="space-y-1.5 text-dim">
+          <li><span class="text-accent">✓</span> claude-sonnet · online</li>
+          <li><span class="text-accent">✓</span> speech engine · ready</li>
+          <li><span class="text-accent">✓</span> datastore · connected</li>
+        </ul>
+      </div>
+      <div>
+        <div class="text-muted mb-3">[ contact ]</div>
+        <ul class="space-y-1.5 text-dim">
+          <li class="hover:text-primary cursor-pointer transition-colors">→ github.com/het</li>
+          <li class="hover:text-primary cursor-pointer transition-colors">→ het@hireloop.dev</li>
+          <li class="hover:text-primary cursor-pointer transition-colors">→ /feedback</li>
+        </ul>
+      </div>
+    </div>
+    <div class="arule mt-12 mb-5" data-fill="─">───────────────────</div>
+    <div class="text-[12.5px] text-muted">
+      <span class="text-terra">❯</span> hireloop
+      <span class="seg">·</span>built by het
+      <span class="seg">·</span>open source
+      <span class="seg">·</span>MIT
+      <span class="seg">·</span>2026
+    </div>
+  </footer>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- PAGE 2 — SETUP WIZARD                                          -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section id="page-setup" class="page">
+  <div class="wrap py-10 sm:py-14" style="padding-bottom:120px;">
+
+    <div class="text-dim text-[12.5px] mb-2 select-none">❯ ./configure-interview</div>
+    <h2 class="text-[20px] font-medium mb-9">interview setup<span class="cursor ml-1">▮</span></h2>
+
+    <!-- progress strip -->
+    <div id="setup-progress" class="flex flex-wrap items-center gap-x-1 gap-y-2 text-[12.5px] mb-12 select-none">
+      <span class="step-ind" data-k="role"><span class="mk text-terra">[●]</span> <span class="lb">role</span></span>
+      <span class="text-dim px-2">──</span>
+      <span class="step-ind" data-k="sen"><span class="mk text-dim">[○]</span> <span class="lb text-dim">seniority</span></span>
+      <span class="text-dim px-2">──</span>
+      <span class="step-ind" data-k="mode"><span class="mk text-dim">[○]</span> <span class="lb text-dim">mode</span></span>
+    </div>
+
+    <!-- STEP 1 — ROLE -->
+    <div class="mb-14">
+      <div class="text-[14px] mb-4"><span class="text-terra">01</span> <span class="text-muted">select a role</span></div>
+
+      <!-- selected pin -->
+      <div id="role-pin" class="tbox px-4 py-3 mb-5 text-[13px]" style="display:none;">
+        <span class="tbox-t">selected</span>
+        <span class="text-accent">●</span> <span id="role-pin-name" class="text-primary"></span>
+        <span class="text-dim" id="role-pin-tags"></span>
+      </div>
+
+      <!-- fzf search -->
+      <div class="flex items-center gap-2 border border-bd px-3 py-2 mb-6 bg-surface">
+        <span class="text-terra text-[13px] flex-none">❯ fzf roles ·</span>
+        <input id="role-search" type="text" placeholder="type to filter…" autocomplete="off"
+          class="bg-transparent outline-none text-primary text-[13px] w-full placeholder:text-dim" />
+        <span class="cursor flex-none">▮</span>
+      </div>
+
+      <div id="role-listing" class="text-[13px] leading-relaxed"></div>
+      <div id="role-empty" class="text-dim text-[13px] pl-2" style="display:none;">— no roles match that filter —</div>
+    </div>
+
+    <!-- STEP 2 — SENIORITY -->
+    <div class="mb-14">
+      <div class="text-[14px] mb-6"><span class="text-terra">02</span> <span class="text-muted">select seniority</span></div>
+      <div id="sen-grid" class="grid grid-cols-1 lg:grid-cols-3 gap-5"></div>
+    </div>
+
+    <!-- STEP 3 — MODE -->
+    <div class="mb-6">
+      <div class="text-[14px] mb-6"><span class="text-terra">03</span> <span class="text-muted">select interview mode</span></div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+        <button class="mode-card tbox text-left px-6 py-6" data-mode="voice">
+          <span class="tbox-t">voice</span>
+          <span class="tbox-r mode-tag" style="display:none;color:var(--terra);">[selected]</span>
+          <div class="flex gap-5">
+            <pre class="text-accent text-[13px] leading-[1.35] m-0 flex-none">
+╭─╮
+│ │
+│ │
+╰┬╯
+ │
+───</pre>
+            <div>
+              <div class="text-primary text-[14px] mb-1">voice mode</div>
+              <div class="arule mb-2" data-fill="─">──────────</div>
+              <div class="text-muted text-[12.5px] leading-relaxed">speak to the AI, hear it speak back. the most realistic practice.</div>
+              <div class="text-dim text-[12px] mt-2">requires chrome + microphone</div>
+            </div>
+          </div>
+        </button>
+
+        <button class="mode-card tbox text-left px-6 py-6" data-mode="text">
+          <span class="tbox-t">text</span>
+          <span class="tbox-r mode-tag" style="display:none;color:var(--terra);">[selected]</span>
+          <div class="flex gap-5">
+            <pre class="text-accent text-[13px] leading-[1.35] m-0 flex-none">
+┌───────┐
+│ &gt; _   │
+│       │
+└───────┘</pre>
+            <div>
+              <div class="text-primary text-[14px] mb-1">text mode</div>
+              <div class="arule mb-2" data-fill="─">──────────</div>
+              <div class="text-muted text-[12.5px] leading-relaxed">classic text interface. type your answers at your own pace.</div>
+              <div class="text-dim text-[12px] mt-2">works anywhere, every browser</div>
+            </div>
+          </div>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- sticky setup bottom bar -->
+  <div class="fixed left-0 right-0 z-[80] bg-surface border-t border-bd" style="bottom:29px;">
+    <div class="wrap flex items-center justify-between gap-4 py-3 text-[12.5px]">
+      <div class="text-muted truncate" id="setup-summary">
+        role: <span class="text-dim">—</span><span class="seg">·</span>seniority: <span class="text-dim">—</span><span class="seg">·</span>mode: <span class="text-dim">—</span>
+      </div>
+      <button class="tbtn flex-none" id="setup-continue" disabled>
+        <span class="br">[</span> continue <span class="ret">→</span> <span class="br">]</span>
+      </button>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- PAGE 3 — LIVE INTERVIEW                                        -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section id="page-interview" class="page">
+  <div class="flex flex-col" style="min-height:calc(100vh - 66px);">
+
+    <!-- interview top bar -->
+    <div class="border-b border-bd flex-none">
+      <div class="wrap flex items-center justify-between gap-3 py-3 text-[12.5px]">
+        <div class="text-muted truncate">~/interview <span class="seg">·</span>session: <span class="text-primary">abc123</span></div>
+        <div id="iv-timer" class="text-[20px] sm:text-[24px] font-medium tracking-tight tabular-nums">24:13</div>
+        <button class="tbtn tbtn-danger text-[12px]" id="iv-end" style="padding:6px 12px;">
+          <span class="br">[</span> end_interview <span class="br">]</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- two-column split -->
+    <div class="wrap py-7 grid grid-cols-1 lg:grid-cols-[40%_60%] gap-7 flex-1 w-full">
+
+      <!-- LEFT — interviewer -->
+      <div>
+        <div class="text-dim text-[12.5px] mb-3 select-none">❯ interviewer</div>
+
+        <div class="tbox bg-surface p-6">
+          <div class="flex flex-col items-center justify-center" style="min-height:188px;">
+            <pre class="text-muted text-[13px] leading-[1.3] m-0 mb-5">
+╭────────╮
+│   AI   │
+╰────────╯</pre>
+            <div id="iv-wave" class="flex items-end gap-[5px] text-accent" style="height:34px;font-size:26px;line-height:1;">
+              <span>▃</span><span>▆</span><span>█</span><span>▄</span><span>▇</span><span>▂</span><span>▅</span><span>▃</span><span>▆</span>
+            </div>
+            <div id="iv-state" class="text-dim text-[12px] mt-4 tracking-wide">❯ speaking</div>
+          </div>
+        </div>
+
+        <!-- current question — editorial moment -->
+        <div class="mt-5 text-dim text-[12px] mb-2 select-none">❯ now-asking · Q<span id="iv-qnum-a">4</span></div>
+        <p id="iv-question" class="ed text-primary leading-[1.45]" style="font-size:clamp(19px,2.4vw,27px);">
+          Let&rsquo;s go a level deeper. Imagine you&rsquo;re building a collaborative
+          document editor — multiple cursors, real-time sync. How would you
+          structure the frontend state so it stays fast as the document grows?
+        </p>
+      </div>
+
+      <!-- RIGHT — transcript -->
+      <div class="flex flex-col min-h-0">
+        <div class="text-dim text-[12.5px] mb-3 select-none">❯ transcript</div>
+
+        <div id="iv-log" class="tbox bg-surface p-4 text-[13px] overflow-y-auto" style="flex:1;min-height:300px;max-height:48vh;"></div>
+
+        <!-- input area -->
+        <div class="mt-5" id="iv-input-wrap">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-dim text-[12px]">❯ input</span>
+            <span class="text-[12px]">
+              <button class="modepick text-terra" data-m="voice">voice</button>
+              <span class="text-dim px-1">/</span>
+              <button class="modepick text-dim" data-m="text">text</button>
+            </span>
+          </div>
+
+          <!-- voice input -->
+          <div id="iv-voice" class="tbox px-4 py-4">
+            <span class="tbox-t">recording</span>
+            <div class="flex items-center gap-3 mb-3">
+              <button id="iv-mic" class="border border-bd px-3 py-1.5 text-[13px] hover:border-muted transition-colors">[ <span id="iv-mic-dot" class="text-red">●</span> ]</button>
+              <span id="iv-listen" class="text-muted text-[13px]">listening<span class="cursor">▮</span></span>
+            </div>
+            <div class="text-[12.5px] text-dim mb-1">live transcript:</div>
+            <div id="iv-interim" class="text-primary text-[13px] leading-relaxed min-h-[2.6em]">&ldquo;yeah so basically what i&rsquo;d do is keep the document model in a single normalized store and …&rdquo;</div>
+            <div class="arule my-3" data-fill="─">──────────</div>
+            <div class="flex items-center justify-between text-[12px] text-dim">
+              <span>[ space to stop · ↵ to submit ]</span>
+              <button class="tbtn tbtn-ghost" id="iv-voice-submit" style="padding:5px 12px;font-size:12px;">
+                <span class="br">[</span> submit <span class="ret">↵</span> <span class="br">]</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- text input -->
+          <div id="iv-text" style="display:none;">
+            <div class="text-terra text-[12.5px] mb-1">❯ your-answer:</div>
+            <div class="border border-bd flex items-start">
+              <span class="text-terra px-3 py-2.5 select-none flex-none">&gt;</span>
+              <textarea id="iv-textarea" rows="2" placeholder="type your answer…"
+                class="bg-transparent outline-none text-primary text-[13px] w-full py-2.5 pr-3 resize-none placeholder:text-dim leading-relaxed"></textarea>
+            </div>
+            <div class="flex justify-end mt-2">
+              <button class="tbtn tbtn-ghost" id="iv-text-submit" style="padding:6px 14px;font-size:12px;">
+                <span class="br">[</span> submit <span class="ret">↵</span> <span class="br">]</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- PAGE 4 — DEBRIEF REPORT                                        -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section id="page-report" class="page">
+
+  <!-- report top bar -->
+  <div class="border-b border-bd">
+    <div class="wrap flex items-center justify-between gap-3 py-3 text-[12.5px]">
+      <div class="text-muted truncate">~/report <span class="seg">·</span>id: <span class="text-primary">xyz789</span></div>
+      <div class="flex items-center gap-3 flex-none">
+        <button class="tbtn tbtn-ghost" id="rp-share" style="padding:6px 12px;font-size:12px;">
+          <span class="br">[</span> share <span class="br">]</span>
+        </button>
+        <button class="tbtn tbtn-ghost" id="rp-pdf" style="padding:6px 12px;font-size:12px;">
+          <span class="br">[</span> download_pdf <span class="br">]</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="wrap py-14" style="padding-bottom:80px;">
+
+    <!-- hero / score -->
+    <div class="text-dim text-[12.5px] mb-8 select-none">❯ cat report.json | parse</div>
+
+    <div class="reveal">
+      <div class="border-bd mx-auto" style="border-style:double;border-width:3px;max-width:560px;">
+        <div class="px-8 py-12 text-center">
+          <div class="font-medium tracking-tight text-accent leading-none" style="font-size:clamp(78px,15vw,128px);">
+            <span id="rp-score">78</span><span class="text-dim text-[0.34em] font-normal"> / 100</span>
+          </div>
+          <div class="arule my-5 flex justify-center" data-fill="─" style="max-width:240px;margin-left:auto;margin-right:auto;">──────────</div>
+          <div class="text-muted text-[14px]">strong mid-level</div>
+        </div>
+      </div>
+
+      <p class="ed italic text-primary text-center max-w-[760px] mx-auto mt-9 leading-[1.5]" style="font-size:clamp(17px,2.3vw,22px);">
+        A solid mid-level frontend engineer with sharp debugging instincts — held
+        back from senior by thinner answers on architecture and scale.
+      </p>
+    </div>
+
+    <div class="arule my-14" data-fill="─">───────────────────</div>
+
+    <!-- sub-scores -->
+    <div class="reveal">
+      <div class="text-dim text-[12.5px] mb-6 select-none">❯ sub-scores</div>
+      <div id="rp-bars" class="space-y-3 text-[13px]"></div>
+    </div>
+
+    <div class="arule my-14" data-fill="─">───────────────────</div>
+
+    <!-- verdict -->
+    <div class="reveal">
+      <div class="text-dim text-[12.5px] mb-5 select-none">❯ verdict</div>
+      <div class="tbox px-6 py-7">
+        <span class="tbox-t">assessment</span>
+        <p class="ed text-primary leading-[1.55]" style="font-size:clamp(16px,2vw,20px);">
+          You interview like someone who has shipped real software. Your React
+          fundamentals are strong and your communication is clear and unhurried.
+          The gap between you and a senior offer is architectural — when the
+          questions moved to scale and trade-offs, the answers got thinner. Spend
+          a focused month on system design and you will feel the difference.
+        </p>
+      </div>
+    </div>
+
+    <div class="arule my-14" data-fill="─">───────────────────</div>
+
+    <!-- strengths & improvements -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-10 reveal">
+      <div>
+        <div class="text-[14px] mb-5"><span class="text-dim">## </span><span class="font-medium">strengths</span></div>
+        <pre class="text-[13px] leading-[2.05] m-0 whitespace-pre-wrap text-muted">
+<span class="text-accent">strengths/</span>
+<span class="text-dim">├─</span> <span class="text-accent">01</span>  hands-on react experience
+<span class="text-dim">├─</span> <span class="text-accent">02</span>  clear, structured communication
+<span class="text-dim">├─</span> <span class="text-accent">03</span>  production-thinking mindset
+<span class="text-dim">└─</span> <span class="text-accent">04</span>  honest about the unknowns</pre>
+      </div>
+      <div>
+        <div class="text-[14px] mb-5"><span class="text-dim">## </span><span class="font-medium">improvements</span></div>
+        <pre class="text-[13px] leading-[2.05] m-0 whitespace-pre-wrap text-muted">
+<span class="text-terra">improvements/</span>
+<span class="text-dim">├─</span> <span class="text-terra">01</span>  system design under real load
+<span class="text-dim">├─</span> <span class="text-terra">02</span>  articulating trade-offs out loud
+<span class="text-dim">└─</span> <span class="text-terra">03</span>  deeper browser + rendering internals</pre>
+      </div>
+    </div>
+
+    <div class="arule my-14" data-fill="─">───────────────────</div>
+
+    <!-- question breakdown -->
+    <div class="reveal">
+      <div class="text-[14px] mb-6"><span class="text-dim">## </span><span class="font-medium">question-by-question</span></div>
+      <div id="rp-questions" class="space-y-4"></div>
+    </div>
+
+    <div class="arule my-14" data-fill="─">───────────────────</div>
+
+    <!-- recommended reading -->
+    <div class="reveal">
+      <div class="text-[14px] mb-6"><span class="text-dim">## </span><span class="font-medium">recommended-reading</span></div>
+      <div id="rp-resources" class="space-y-5 text-[13px]"></div>
+    </div>
+
+    <div class="arule my-14" data-fill="─">───────────────────</div>
+
+    <!-- footer -->
+    <div class="reveal">
+      <button id="rp-again" class="text-muted hover:text-primary transition-colors text-[14px]">
+        <span class="text-terra">❯</span> run-another-interview <span class="text-terra">↵</span>
+      </button>
+      <div class="text-accent text-[13px] mt-4 select-none">❯ exit 0</div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════ FIXED STATUS BAR ════════════════ -->
+<div id="statusbar" class="fixed bottom-0 left-0 right-0 z-[100] bg-surface border-t border-bd" style="height:29px;">
+  <div class="wrap flex items-center h-full text-[11.5px] text-muted overflow-x-auto whitespace-nowrap">
+    <span id="statusbar-text"><span class="text-dim">❯ STATUS</span> <span class="text-terra pdot">●</span> 3,127 interviews completed this week <span class="seg">·</span> avg score 71 <span class="seg">·</span> top role: backend developer</span>
+  </div>
+</div>
+
+<!-- toast -->
+<div id="toast"><span class="text-terra">❯</span> <span id="toast-msg">copied to clipboard</span> <span class="text-accent">✓</span></div>
+
+<script>
+"use strict";
+/* ════════════════════════════════════════════════════════════════
+   hireloop — terminal mockup · vanilla js
+   ════════════════════════════════════════════════════════════════ */
+
+/* ---- data ---------------------------------------------------- */
+const ROLES = [
+  { id:"frontend-developer",    cat:"engineering", tags:"react · vue · css · perf · a11y" },
+  { id:"backend-developer",     cat:"engineering", tags:"apis · databases · scaling · queues" },
+  { id:"full-stack-developer",  cat:"engineering", tags:"mern · nextjs · system design" },
+  { id:"mobile-developer",      cat:"engineering", tags:"ios · android · react native" },
+  { id:"devops-sre",            cat:"engineering", tags:"ci/cd · k8s · observability" },
+  { id:"security-engineer",     cat:"engineering", tags:"threat modeling · owasp · crypto" },
+  { id:"ml-engineer",           cat:"engineering", tags:"training · mlops · inference" },
+  { id:"data-scientist",        cat:"data",        tags:"ml · stats · python · sql" },
+  { id:"data-analyst",          cat:"data",        tags:"sql · dashboards · kpis" },
+  { id:"data-engineer",         cat:"data",        tags:"etl · spark · warehousing" },
+  { id:"analytics-engineer",    cat:"data",        tags:"dbt · modeling · metrics" },
+  { id:"product-manager",       cat:"product",     tags:"strategy · discovery · roadmap" },
+  { id:"technical-pm",          cat:"product",     tags:"apis · platforms · specs" },
+  { id:"growth-pm",             cat:"product",     tags:"funnels · retention · a/b" },
+  { id:"ux-designer",           cat:"design",      tags:"research · ia · usability" },
+  { id:"ui-designer",           cat:"design",      tags:"visual · type · figma" },
+  { id:"product-designer",      cat:"design",      tags:"end-to-end · prototyping" },
+  { id:"design-systems",        cat:"design",      tags:"tokens · components · docs" },
+  { id:"ai-engineer",           cat:"specialized", tags:"llms · rag · agents · evals" },
+  { id:"solutions-architect",   cat:"specialized", tags:"architecture · cloud · integration" },
+];
+const CATS = ["engineering","data","product","design","specialized"];
+
+const SENIORITY = [
+  { id:"junior", title:"junior", line:"0–2 years experience",
+    focus:"fundamentals, syntax, core patterns, and how fast you learn." },
+  { id:"mid", title:"mid", line:"3–5 years experience",
+    focus:"applied scenarios, real trade-offs, and how you reason on the job." },
+  { id:"senior", title:"senior", line:"6+ years experience",
+    focus:"architecture, scale, leadership, and the hard calls under ambiguity." },
+];
+
+const SUBSCORES = [
+  { label:"technical depth",  score:82 },
+  { label:"communication",    score:74 },
+  { label:"problem solving",  score:79 },
+];
+
+const QUESTIONS = [
+  { n:"01", score:8, q:"Explain the virtual DOM and reconciliation in React.",
+    you:"Walked through the diffing pass and the fiber tree clearly; gave a concrete example from a real list.",
+    fb:"Strong fundamentals and a real example. You skipped the role of the key prop in keeping list identity stable across renders.",
+    model:"React keeps a lightweight tree in memory and diffs the new tree against the previous one, reconciling only what changed. Fiber makes that work interruptible and prioritized. Keys are the contract that tells React which list items are the same node across renders — without stable keys it falls back to index matching and silently corrupts local state on reorder." },
+  { n:"02", score:7, q:"How would you debug a React app that suddenly feels slow?",
+    you:"Reached for the React profiler first, read the flame graph, found an unmemoized table re-rendering on keystroke.",
+    fb:"Good instinct going to the profiler over guesses. Mention how you would confirm the fix held — a before/after measurement, not just 'it feels fine'.",
+    model:"Reproduce it, then measure: React Profiler for render cost, Performance panel for the full frame. Look for wide commits, unmemoized children, and layout thrash. Fix the biggest cost first, then re-record to prove the regression is gone and add a guardrail so it cannot silently return." },
+  { n:"03", score:9, q:"How do you structure CSS so it scales across a large app?",
+    you:"Described a tokens layer, colocated component styles, and a strict no-magic-numbers rule with examples.",
+    fb:"Excellent — concrete, opinionated, and clearly battle-tested. Nothing material missing here.",
+    model:"A scalable system has layers: design tokens at the base, component-scoped styles that never leak, and a thin set of layout primitives. Naming is predictable, specificity stays flat, and every value traces back to a token. The test is whether a new engineer can add a component without reading the whole stylesheet." },
+  { n:"04", score:6, q:"Design the frontend architecture for a collaborative editor like Google Docs.",
+    you:"Suggested a websocket connection and a shared state object; was unsure how to resolve concurrent edits.",
+    fb:"The instinct toward shared state is right, but the answer thinned out exactly where it mattered — conflict resolution. Read up on CRDTs and operational transforms.",
+    model:"Model the document as a CRDT or OT log so concurrent edits converge without a central lock. The client holds a normalized in-memory model, applies local edits optimistically, and reconciles remote ops as they stream in. Rendering is virtualized so a 50-page doc only paints the viewport, and presence (cursors) rides a separate lightweight channel." },
+  { n:"05", score:8, q:"Tell me about the trickiest bug you have debugged.",
+    you:"Told a clear story about a cache-layer race condition; explained the hypothesis and how it was isolated.",
+    fb:"Well-structured story with a real root cause. Could be sharper on what you changed afterwards to prevent a repeat.",
+    model:"A strong answer names the symptom, the hypothesis, how you isolated it, the actual root cause, and — crucially — the systemic fix: a test, a type, an invariant, or an alert that makes the whole class of bug impossible or loud next time." },
+  { n:"06", score:7, q:"How do you make a component genuinely accessible?",
+    you:"Covered semantic HTML, alt text, and keyboard focus; lighter on screen-reader testing and ARIA.",
+    fb:"Solid baseline. Go deeper on managing focus in dynamic UI and on actually testing with a screen reader, not just auditing.",
+    model:"Start with semantic HTML so most behavior is free, then layer ARIA only where the platform falls short. Manage focus deliberately on route and modal changes, ensure visible focus states, and verify with a keyboard and a real screen reader — automated audits catch maybe half of what matters." },
+];
+
+const RESOURCES = [
+  { url:"https://react.dev/learn/preserving-and-resetting-state",
+    why:"tightens your mental model of reconciliation and why keys matter" },
+  { url:"https://www.patterns.dev",
+    why:"frontend architecture patterns aimed straight at your system-design gap" },
+  { url:"https://web.dev/learn/performance",
+    why:"a structured path through measuring and fixing real performance work" },
+  { url:"https://localfirstweb.dev",
+    why:"CRDTs and sync — the exact territory where Q04 ran thin" },
+];
+
+/* extra interviewer questions for the live mockup flow */
+const NEXT_QUESTIONS = [
+  "Good. Now — two users type into the same paragraph at the same instant. Walk me through how the frontend resolves that before it ever reaches the server.",
+  "Let's talk performance budgets. The document grows to 50 pages. What in your render path breaks first, and how would you know before users do?",
+  "Last one on this thread. How would you keep the editing experience usable on a slow, flaky 3G connection?",
+];
+const ACK = [
+  "Got it — that's a reasonable starting point.",
+  "Okay, I follow your thinking there.",
+  "Interesting. Let me push on that a little.",
+  "That tracks. Let's keep going.",
+];
+
+/* ---- helpers -------------------------------------------------- */
+const $  = (s, r=document) => r.querySelector(s);
+const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
+const esc = (s) => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+
+function toast(msg){
+  $("#toast-msg").textContent = msg;
+  const t = $("#toast");
+  t.classList.add("show");
+  clearTimeout(t._timer);
+  t._timer = setTimeout(()=>t.classList.remove("show"), 2600);
+}
+
+/* fill the ascii rules out to full width */
+function fillRules(){
+  $$(".arule").forEach(el=>{
+    const ch = el.dataset.fill || "─";
+    el.textContent = ch.repeat(420);
+  });
+}
+
+/* ---- page navigation ----------------------------------------- */
+const STATUS = {
+  landing:'<span class="text-dim">❯ STATUS</span> <span class="text-terra pdot">●</span> 3,127 interviews completed this week <span class="seg">·</span> avg score 71 <span class="seg">·</span> top role: backend developer',
+  setup:'<span class="text-dim">❯ setup</span> <span class="seg">·</span> configure your interview <span class="seg">·</span> 3 steps <span class="seg">·</span> <span class="text-muted">all fields required</span>',
+  interview:'<span class="text-dim">❯ session: abc123</span> <span class="seg">·</span> question <span id="sb-q">4</span>/12 <span class="seg">·</span> mode: <span id="sb-mode">voice</span> <span class="seg">·</span> <span id="sb-time">24:13</span> remaining <span class="seg">·</span> <span class="text-accent">●</span> connected',
+  report:'<span class="text-dim">❯ report: xyz789</span> <span class="seg">·</span> score 78/100 <span class="seg">·</span> generated just now <span class="seg">·</span> <span class="text-accent">●</span> saved',
+};
+
+function showPage(name){
+  $$(".page").forEach(p=>p.classList.remove("active"));
+  $("#page-"+name).classList.add("active");
+
+  $$("#tabstrip .tab").forEach(t=>{
+    const on = t.dataset.tab === name;
+    t.querySelector(".dot").className = "dot " + (on ? "text-accent" : "text-dim");
+    t.querySelector(".dot").textContent = on ? "●" : "○";
+    t.style.color = on ? "var(--primary)" : "var(--muted)";
+  });
+
+  $("#statusbar-text").innerHTML = STATUS[name];
+  window.scrollTo(0,0);
+  history.replaceState(null,"","#"+name);
+
+  if (name === "interview") startInterview();
+  if (name === "report")    revealReport();
+  triggerReveals();
+}
+
+$$("#tabstrip .tab").forEach(t=>{
+  t.addEventListener("click", ()=>showPage(t.dataset.tab));
+});
+
+/* ---- landing : hero typewriter ------------------------------- */
+(function(){
+  const target = $("#hero-type");
+  const text = "Ready when you are";
+  let i = 0;
+  target.textContent = "";
+  function tick(){
+    if (i < text.length){
+      target.textContent += text[i++];
+      setTimeout(tick, 52);
+    } else {
+      const q = document.createElement("span");
+      q.textContent = "?";
+      q.style.color = "var(--terra)";
+      target.appendChild(q);
+    }
+  }
+  setTimeout(tick, 380);
+})();
+
+/* ---- landing : role grid ------------------------------------- */
+(function(){
+  const grid = $("#role-grid");
+  grid.innerHTML = ROLES.map(r=>`
+    <div class="gcell">
+      <span class="text-dim">&lt;</span><span class="gname">${r.id}</span><span class="text-dim">&gt;</span>
+      <span class="text-muted text-[11.5px]">[${r.cat}]</span>
+    </div>`).join("");
+  $("#role-count").textContent = ROLES.length;
+})();
+
+/* ---- landing : role chip tooltips ---------------------------- */
+$$("#role-chips .chip").forEach(chip=>{
+  const role = ROLES.find(r=>r.id===chip.dataset.role);
+  const tip = chip.parentElement.querySelector(".rtip");
+  tip.innerHTML = `
+    <div class="text-terra mb-2">┌─ roles/${role.id}.md</div>
+    <div class="text-muted leading-relaxed">
+      <span class="text-dim">category</span>&nbsp;&nbsp;${role.cat}<br/>
+      <span class="text-dim">topics</span>&nbsp;&nbsp;&nbsp;&nbsp;${role.tags}
+    </div>
+    <div class="arule my-2" style="white-space:nowrap;overflow:hidden">────────────────</div>
+    <div class="text-dim">press start to interview for this role</div>`;
+  chip.addEventListener("click",(e)=>{
+    e.stopPropagation();
+    const open = tip.classList.contains("open");
+    $$(".rtip").forEach(t=>t.classList.remove("open"));
+    if (!open) tip.classList.add("open");
+  });
+});
+document.addEventListener("click", ()=> $$(".rtip").forEach(t=>t.classList.remove("open")));
+
+/* ---- landing : ctas ------------------------------------------ */
+$("#cta-start").addEventListener("click", ()=>showPage("setup"));
+$$("[data-ext]").forEach(el=>{
+  el.addEventListener("click", ()=>{
+    const k = el.dataset.ext;
+    if (k==="theme") toast("theme locked: phosphor-dark");
+    else toast(k + ": external link (mockup)");
+  });
+});
+document.addEventListener("keydown",(e)=>{
+  if (e.key==="Enter" && $("#page-landing").classList.contains("active")
+      && document.activeElement.tagName!=="INPUT"){
+    showPage("setup");
+  }
+});
+
+/* ════════════════ SETUP WIZARD ════════════════ */
+const setup = { role:null, sen:null, mode:null };
+
+/* role listing */
+function renderRoleListing(filter=""){
+  const wrap = $("#role-listing");
+  const f = filter.trim().toLowerCase();
+  let html = "";
+  let any = false;
+  CATS.forEach(cat=>{
+    const rows = ROLES.filter(r=>r.cat===cat).filter(r=>
+      !f || r.id.includes(f) || r.tags.includes(f) || r.cat.includes(f));
+    if (!rows.length) return;
+    any = true;
+    html += `<div class="text-muted mt-4 mb-1 pl-2">${cat}/</div>`;
+    rows.forEach((r,idx)=>{
+      const last = idx===rows.length-1;
+      html += `
+        <div class="rrow ${setup.role===r.id?"sel":""}" data-role="${r.id}">
+          <span class="pre">${last?"└─":"├─"}</span>
+          <span class="arrow">❯</span>
+          <span class="${setup.role===r.id?"text-accent":"text-primary"}" style="min-width:210px;display:inline-block">${r.id}.md</span>
+          <span class="text-dim hidden sm:inline">→</span>
+          <span class="text-muted hidden sm:inline truncate">${r.tags}</span>
+        </div>`;
+    });
+  });
+  wrap.innerHTML = html;
+  $("#role-empty").style.display = any ? "none" : "block";
+  $$(".rrow", wrap).forEach(row=>{
+    row.addEventListener("click", ()=>selectRole(row.dataset.role));
+  });
+}
+
+function selectRole(id){
+  setup.role = id;
+  const r = ROLES.find(x=>x.id===id);
+  $("#role-pin").style.display = "block";
+  $("#role-pin-name").textContent = id + ".md";
+  $("#role-pin-tags").textContent = "  → " + r.tags;
+  renderRoleListing($("#role-search").value);
+  updateSetup();
+}
+$("#role-search").addEventListener("input",(e)=>renderRoleListing(e.target.value));
+
+/* seniority */
+(function(){
+  $("#sen-grid").innerHTML = SENIORITY.map(s=>`
+    <button class="sen-card tbox text-left px-5 py-5" data-sen="${s.id}">
+      <span class="tbox-t">${s.title}</span>
+      <span class="tbox-r sen-tag" style="display:none;color:var(--terra)">[selected]</span>
+      <div class="text-primary text-[13.5px] mb-2">${s.line}</div>
+      <div class="text-muted text-[12.5px] leading-relaxed">focus: ${s.focus}</div>
+    </button>`).join("");
+  $$(".sen-card").forEach(c=>{
+    c.addEventListener("click", ()=>{
+      setup.sen = c.dataset.sen;
+      $$(".sen-card").forEach(x=>{
+        const on = x===c;
+        x.style.borderColor = on ? "var(--terra)" : "var(--bd)";
+        x.querySelector(".sen-tag").style.display = on ? "block" : "none";
+      });
+      updateSetup();
+    });
+  });
+})();
+
+/* mode */
+$$(".mode-card").forEach(c=>{
+  c.addEventListener("click", ()=>{
+    setup.mode = c.dataset.mode;
+    $$(".mode-card").forEach(x=>{
+      const on = x===c;
+      x.style.borderColor = on ? "var(--terra)" : "var(--bd)";
+      x.querySelector(".mode-tag").style.display = on ? "block" : "none";
+    });
+    updateSetup();
+  });
+});
+
+function updateSetup(){
+  /* progress strip */
+  const map = { role:setup.role, sen:setup.sen, mode:setup.mode };
+  $$(".step-ind").forEach(ind=>{
+    const done = !!map[ind.dataset.k];
+    ind.querySelector(".mk").textContent = done ? "[●]" : "[○]";
+    ind.querySelector(".mk").className = "mk " + (done?"text-terra":"text-dim");
+    ind.querySelector(".lb").className = "lb " + (done?"text-primary":"text-dim");
+  });
+  $(".step-ind[data-k=role] .lb").textContent =
+    setup.role ? ("role: "+setup.role) : "role";
+
+  /* summary bar */
+  const dim = (v)=> v ? `<span class="text-primary">${v}</span>` : `<span class="text-dim">—</span>`;
+  $("#setup-summary").innerHTML =
+    `role: ${dim(setup.role)}<span class="seg">·</span>seniority: ${dim(setup.sen)}<span class="seg">·</span>mode: ${dim(setup.mode)}`;
+
+  /* continue */
+  const ready = setup.role && setup.sen && setup.mode;
+  $("#setup-continue").disabled = !ready;
+}
+renderRoleListing();
+updateSetup();
+
+$("#setup-continue").addEventListener("click", ()=>{
+  if ($("#setup-continue").disabled) return;
+  ivState.mode = setup.mode || "voice";
+  showPage("interview");
+});
+
+/* ════════════════ LIVE INTERVIEW ════════════════ */
+const ivState = { mode:"voice", q:4, timer:1453, listening:true, started:false, tHandle:null, wHandle:null };
+
+const SEED_LOG = [
+  { t:"12:00:04", who:"interviewer", text:"Thanks for joining. Let's start simple — tell me about a frontend project you're proud of." },
+  { t:"12:00:38", who:"you", text:"Sure. I rebuilt our internal dashboard last quarter — it was a 4-second load and I got it under 800ms." },
+  { t:"12:02:10", who:"interviewer", text:"Nice result. What was actually causing the 4 seconds?" },
+  { t:"12:02:51", who:"you", text:"Mostly an unbatched set of API calls and a huge unmemoized table re-rendering on every keystroke." },
+  { t:"12:05:20", who:"interviewer", text:"Good — you found it with profiling. What did you reach for first, the network tab or the React profiler?" },
+  { t:"12:06:02", who:"you", text:"React profiler. The waterfall looked fine, the flame graph didn't." },
+  { t:"12:08:30", who:"interviewer", text:"That instinct is right. Let's go a level deeper on rendering and state." },
+];
+
+function logLine(m){
+  const terra = m.who==="interviewer";
+  return `<div class="tmsg mb-2.5 leading-relaxed">
+    <span class="text-dim">[${m.t}]</span>
+    <span class="text-muted">&nbsp;&nbsp;${m.who}${m.who==="you"?"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;":""}</span>
+    <span class="${terra?"text-terra":"text-accent"}">&nbsp;❯ </span>
+    <span class="text-primary">${esc(m.text)}</span>
+  </div>`;
+}
+
+function startInterview(){
+  if (!ivState.started){
+    $("#iv-log").innerHTML = SEED_LOG.map(logLine).join("");
+    $("#iv-log").scrollTop = $("#iv-log").scrollHeight;
+    ivState.started = true;
+  }
+  applyMode(ivState.mode);
+  startTimer();
+  startWave();
+}
+
+function applyMode(mode){
+  ivState.mode = mode;
+  $("#iv-voice").style.display = mode==="voice" ? "block" : "none";
+  $("#iv-text").style.display  = mode==="text"  ? "block" : "none";
+  $$(".modepick").forEach(b=>{
+    b.className = "modepick " + (b.dataset.m===mode ? "text-terra" : "text-dim");
+  });
+  const sbMode = $("#sb-mode"); if (sbMode) sbMode.textContent = mode;
+}
+$$(".modepick").forEach(b=> b.addEventListener("click", ()=>applyMode(b.dataset.m)));
+
+/* timer */
+function fmt(s){
+  const m = Math.floor(s/60), ss = s%60;
+  return String(m).padStart(2,"0")+":"+String(ss).padStart(2,"0");
+}
+function startTimer(){
+  clearInterval(ivState.tHandle);
+  ivState.tHandle = setInterval(()=>{
+    if (ivState.timer>0) ivState.timer--;
+    const txt = fmt(ivState.timer);
+    const el = $("#iv-timer");
+    el.textContent = txt;
+    el.style.color = ivState.timer < 300 ? "var(--terra)" : "var(--primary)";
+    const sb = $("#sb-time"); if (sb) sb.textContent = txt;
+  }, 1000);
+}
+
+/* waveform */
+const WAVE_CH = ["▁","▂","▃","▄","▅","▆","▇","█"];
+function startWave(){
+  clearInterval(ivState.wHandle);
+  const bars = $$("#iv-wave span");
+  ivState.wHandle = setInterval(()=>{
+    const speaking = $("#iv-state").dataset.mode !== "idle";
+    bars.forEach(b=>{
+      const max = speaking ? 8 : 3;
+      b.textContent = WAVE_CH[Math.floor(Math.random()*max)];
+    });
+  }, 130);
+}
+function setInterviewerState(s){
+  const el = $("#iv-state");
+  el.dataset.mode = s;
+  if (s==="thinking"){ el.textContent = "[ thinking ··· ]"; el.style.color="var(--terra)"; }
+  else if (s==="speaking"){ el.textContent = "❯ speaking"; el.style.color="var(--muted)"; }
+  else { el.textContent = "❯ idle"; el.style.color="var(--dim)"; }
+}
+
+/* submit an answer → append + canned interviewer turn */
+function nowStamp(){
+  const base = 12*3600 + (30 - Math.floor(ivState.timer/60))*60;
+  const h=Math.floor(base/3600)%24, m=Math.floor(base/60)%60, s=base%60;
+  return [h,m,s].map(x=>String(x).padStart(2,"0")).join(":");
+}
+function appendMsg(who,text){
+  const el = document.createElement("div");
+  el.innerHTML = logLine({ t:nowStamp(), who, text });
+  $("#iv-log").appendChild(el.firstElementChild);
+  $("#iv-log").scrollTop = $("#iv-log").scrollHeight;
+}
+function submitAnswer(text){
+  if (!text.trim()) return;
+  appendMsg("you", text.trim());
+  setInterviewerState("thinking");
+  setTimeout(()=>{
+    const ack = ACK[Math.floor(Math.random()*ACK.length)];
+    const idx = (ivState.q - 4) % NEXT_QUESTIONS.length;
+    const nextQ = NEXT_QUESTIONS[idx];
+    appendMsg("interviewer", ack + " " + nextQ);
+    $("#iv-question").textContent = nextQ;
+    ivState.q++;
+    $("#iv-qnum-a").textContent = ivState.q;
+    const sbq = $("#sb-q"); if (sbq) sbq.textContent = ivState.q;
+    setInterviewerState("speaking");
+  }, 1500);
+}
+
+/* voice */
+$("#iv-mic").addEventListener("click", ()=>{
+  ivState.listening = !ivState.listening;
+  $("#iv-mic-dot").className = ivState.listening ? "text-red pdot" : "text-dim";
+  $("#iv-listen").innerHTML = ivState.listening
+    ? 'listening<span class="cursor">▮</span>' : 'paused';
+});
+$("#iv-mic-dot").classList.add("pdot");
+$("#iv-voice-submit").addEventListener("click", ()=>{
+  submitAnswer($("#iv-interim").textContent.replace(/[“”"]/g,""));
+  $("#iv-interim").innerHTML = '<span class="text-dim">— listening for your next answer —</span>';
+});
+
+/* text */
+$("#iv-text-submit").addEventListener("click", ()=>{
+  submitAnswer($("#iv-textarea").value);
+  $("#iv-textarea").value = "";
+});
+$("#iv-textarea").addEventListener("keydown",(e)=>{
+  if (e.key==="Enter" && !e.shiftKey){
+    e.preventDefault();
+    submitAnswer($("#iv-textarea").value);
+    $("#iv-textarea").value = "";
+  }
+});
+
+$("#iv-end").addEventListener("click", ()=>{
+  clearInterval(ivState.tHandle);
+  clearInterval(ivState.wHandle);
+  showPage("report");
+});
+
+/* ════════════════ REPORT ════════════════ */
+function barColor(score){
+  if (score>=80) return "var(--accent)";
+  if (score>=60) return "var(--primary)";
+  return "var(--terra)";
+}
+function renderBars(){
+  const SEGS = 25;
+  $("#rp-bars").innerHTML = SUBSCORES.map(s=>{
+    const fill = Math.round(s.score/100*SEGS);
+    const col = barColor(s.score);
+    return `<div class="flex items-center gap-3 flex-wrap">
+      <span class="text-muted" style="min-width:150px;display:inline-block">${s.label}</span>
+      <span style="letter-spacing:1px">
+        <span style="color:${col}">${"█".repeat(fill)}</span><span class="text-dim">${"░".repeat(SEGS-fill)}</span>
+      </span>
+      <span style="color:${col}">${s.score}</span>
+    </div>`;
+  }).join("");
+}
+function renderQuestions(){
+  $("#rp-questions").innerHTML = QUESTIONS.map((q,i)=>{
+    const col = q.score>=8 ? "var(--accent)" : q.score>=6 ? "var(--primary)" : "var(--terra)";
+    return `<div class="tbox px-5 py-5">
+      <span class="tbox-t">Q${q.n}</span>
+      <span class="tbox-r" style="color:${col}">score: ${q.score}/10</span>
+      <div class="text-terra text-[13.5px] mb-3">❯ &ldquo;${esc(q.q)}&rdquo;</div>
+      <div class="text-[13px] leading-relaxed">
+        <div class="text-dim mb-0.5">your answer:</div>
+        <div class="text-muted mb-3 pl-3">${esc(q.you)}</div>
+        <div class="text-dim mb-0.5">feedback:</div>
+        <div class="text-primary mb-3 pl-3">${esc(q.fb)}</div>
+        <button class="qtoggle text-terra text-[12.5px]" data-i="${i}">[▸ show model answer]</button>
+        <div class="model-ans mt-3 pl-3 border-l border-bd" data-i="${i}">
+          <div class="text-dim mb-0.5">model answer:</div>
+          <div class="text-muted">${esc(q.model)}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+  $$(".qtoggle").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const box = $(`.model-ans[data-i="${btn.dataset.i}"]`);
+      const open = box.classList.toggle("open");
+      btn.textContent = open ? "[▾ hide model answer]" : "[▸ show model answer]";
+    });
+  });
+}
+function renderResources(){
+  $("#rp-resources").innerHTML = RESOURCES.map(r=>`
+    <div>
+      <div class="text-primary break-all"><span class="text-terra">❯ open</span> ${r.url}</div>
+      <div class="text-muted text-[12.5px] pl-5">→ ${r.why}</div>
+    </div>`).join("");
+}
+let reportBuilt = false;
+function revealReport(){
+  if (!reportBuilt){
+    renderBars(); renderQuestions(); renderResources();
+    reportBuilt = true;
+  }
+  /* count-up score */
+  const el = $("#rp-score");
+  let v = 0; const target = 78;
+  clearInterval(el._h);
+  el._h = setInterval(()=>{
+    v += 3;
+    if (v>=target){ v=target; clearInterval(el._h); }
+    el.textContent = v;
+  }, 24);
+}
+
+$("#rp-share").addEventListener("click", ()=>{
+  const url = location.href.split("#")[0] + "#report";
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(url).then(
+      ()=>toast("copied to clipboard"),
+      ()=>toast("copy failed — select the url")
+    );
+  } else toast("copied to clipboard");
+});
+$("#rp-pdf").addEventListener("click", ()=>toast("report.pdf — generating (mockup)"));
+$("#rp-again").addEventListener("click", ()=>showPage("setup"));
+
+/* ════════════════ REVEALS ════════════════ */
+let revObserver;
+function triggerReveals(){
+  if (!revObserver){
+    revObserver = new IntersectionObserver((entries)=>{
+      entries.forEach(e=>{ if (e.isIntersecting){ e.target.classList.add("in"); revObserver.unobserve(e.target); } });
+    }, { threshold:0.12 });
+  }
+  $$(".page.active .reveal").forEach(el=>{
+    if (!el.classList.contains("in")) revObserver.observe(el);
+  });
+}
+
+/* ════════════════ BOOT ════════════════ */
+fillRules();
+window.addEventListener("resize", fillRules);
+const initial = (location.hash || "#landing").slice(1);
+showPage(["landing","setup","interview","report"].includes(initial) ? initial : "landing");
+</script>
+</body>
+</html>

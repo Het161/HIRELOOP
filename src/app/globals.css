@@ -1,0 +1,282 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================ *
+ * HireLoop — terminal-native theme. Phosphor dark, mono-first.
+ * ============================================================ */
+
+:root {
+  --bg: #0d0e0c;
+  --surface: #16181a;
+  --surface2: #1a1d1a;
+  --paper: #d4d4cf;
+  --muted: #6b7066;
+  --dim: #3d423a;
+  --border: #2a2d28;
+  --accent: #7ec96f;
+  --accent2: #d97757;
+  --danger: #c8553d;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--paper);
+  font-family: var(--font-mono), ui-monospace, monospace;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* clears the fixed Navbar (37px) and StatusBar (28px) */
+  padding-top: 37px;
+  padding-bottom: 28px;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+/* Blinking block cursor */
+.cursor {
+  display: inline-block;
+  width: 0.55ch;
+  height: 0.95em;
+  background: var(--accent2);
+  margin-left: 0.1em;
+  vertical-align: -0.1em;
+  animation: blink 1.05s steps(1) infinite;
+}
+@keyframes blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Terminal prompt prefixes */
+.prompt::before {
+  content: "❯ ";
+  color: var(--accent2);
+}
+.prompt-muted::before {
+  content: "❯ ";
+  color: var(--muted);
+}
+
+/* Bracket button — [ action ] */
+.btn-term {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5ch;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-weight: 500;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--paper);
+  transition:
+    background 0.18s ease,
+    color 0.18s ease,
+    border-color 0.18s ease;
+  cursor: pointer;
+  text-transform: lowercase;
+  white-space: nowrap;
+}
+.btn-term::before {
+  content: "[ ";
+  color: var(--muted);
+}
+.btn-term::after {
+  content: " ]";
+  color: var(--muted);
+}
+.btn-term:hover {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}
+.btn-term:hover::before,
+.btn-term:hover::after {
+  color: var(--bg);
+}
+.btn-term:hover .btn-ret {
+  color: var(--bg);
+}
+.btn-term:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.btn-term:disabled:hover {
+  background: transparent;
+  color: var(--paper);
+  border-color: var(--border);
+}
+.btn-term:disabled:hover::before,
+.btn-term:disabled:hover::after {
+  color: var(--muted);
+}
+.btn-term-danger:hover {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--bg);
+}
+/* terracotta inline glyph (e.g. ↵) inside a bracket button */
+.btn-ret {
+  color: var(--accent2);
+  transition: color 0.18s ease;
+}
+
+/* Editorial moment — reserved for hero question, pull-quote,
+   live AI question, report headline + verdict only. */
+.editorial {
+  font-family: var(--font-editorial), ui-sans-serif, sans-serif;
+  font-style: italic;
+  color: var(--paper);
+}
+
+/* Row hover with ❯ prefix slide-in */
+.row-hover {
+  position: relative;
+  padding-left: 24px;
+  transition: background 0.15s ease;
+}
+.row-hover::before {
+  content: "❯";
+  position: absolute;
+  left: 8px;
+  color: var(--accent2);
+  opacity: 0;
+  transform: translateX(-4px);
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
+}
+.row-hover:hover {
+  background: var(--surface2);
+}
+.row-hover:hover::before {
+  opacity: 1;
+  transform: translateX(0);
+}
+.row-hover.selected {
+  border-left: 2px solid var(--accent);
+  background: #13170f;
+}
+.row-hover.selected::before {
+  content: "●";
+  color: var(--accent);
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* ASCII frame helper */
+.frame-box {
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+/* Scrollbar — terminal thin */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+
+/* Reveal on scroll */
+.reveal {
+  opacity: 0;
+  transform: translateY(12px);
+  transition:
+    opacity 0.7s ease,
+    transform 0.7s ease;
+}
+.reveal.in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Pulsing dot */
+.pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent2);
+  display: inline-block;
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Thinking ellipsis dots */
+.dot-flash {
+  animation: dotflash 1.3s infinite both;
+}
+.dot-flash:nth-child(2) {
+  animation-delay: 0.18s;
+}
+.dot-flash:nth-child(3) {
+  animation-delay: 0.36s;
+}
+@keyframes dotflash {
+  0%,
+  80%,
+  100% {
+    opacity: 0.2;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+/* Transcript message fade-in */
+.msg-in {
+  animation: msgin 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes msgin {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cursor,
+  .pulse-dot,
+  .dot-flash {
+    animation: none;
+  }
+  .reveal {
+    transition: none;
+    opacity: 1;
+    transform: none;
+  }
+  .msg-in {
+    animation: none;
+  }
+}
