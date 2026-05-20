@@ -3,6 +3,7 @@ import { IBM_Plex_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/shared/Navbar";
 import Toast from "@/components/shared/Toast";
+import ClickSounds from "@/components/shared/ClickSounds";
 
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
@@ -42,6 +43,7 @@ export default function RootLayout({
         <Navbar />
         {children}
         <Toast />
+        <ClickSounds />
       </body>
     </html>
   );

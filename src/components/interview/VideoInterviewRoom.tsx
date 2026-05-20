@@ -33,7 +33,7 @@ function normalizeCaption(text: string): string {
 function ConnectingBox() {
   return (
     <div className="flex aspect-[4/5] w-full flex-col items-center justify-center border border-border bg-surface font-mono">
-      <div className="mb-2 text-accent2">❯ booting video link…</div>
+      <div className="mb-2 text-accent2">❯ booting voice link…</div>
       <div className="text-[12px] text-muted">loading webrtc client</div>
     </div>
   );
@@ -171,18 +171,18 @@ export default function VideoInterviewRoom({
 
       {/* split */}
       <div className="mx-auto grid w-full max-w-shell flex-1 grid-cols-1 gap-7 px-5 py-7 lg:grid-cols-[40%_60%]">
-        {/* LEFT — video */}
+        {/* LEFT — voice */}
         <div>
           <Prompt accent="muted" className="mb-3">
-            interviewer.cam
+            interviewer.voice
           </Prompt>
 
           {connError ? (
-            <TerminalWindow title="video error">
+            <TerminalWindow title="voice error">
               <div className="text-[13px]">
                 <div className="mb-2 text-danger">❯ {connError}</div>
                 <div className="mb-4 leading-relaxed text-muted">
-                  the video link dropped. you can end the interview to grade
+                  the voice link dropped. you can end the interview to grade
                   what you covered, or restart in text mode.
                 </div>
                 <Link
@@ -260,7 +260,7 @@ export default function VideoInterviewRoom({
           <>
             <span className="text-dim">❯ session:</span> {sessionId.slice(0, 8)}
             <span className="px-2 text-dim">·</span>role: {roleId || "—"}
-            <span className="px-2 text-dim">·</span>mode: video
+            <span className="px-2 text-dim">·</span>mode: voice
             <span className="px-2 text-dim">·</span>
             {mmss} remaining
           </>

@@ -4,6 +4,7 @@ import type { ButtonHTMLAttributes } from "react";
  * AsciiButton — a <button> rendered as a terminal command:
  * [ action ]. Hover fills with green (or red for danger) and
  * inverts the text. Forwards all native button props.
+ * The global ClickSounds listener plays the click tick.
  * ============================================================ */
 
 interface AsciiButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
