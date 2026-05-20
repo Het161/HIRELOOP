@@ -46,8 +46,14 @@ export default function EndInterviewDialog({
                   generate your debrief. this can&apos;t be undone.
                 </div>
                 <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                  <AsciiButton onClick={onCancel}>keep going</AsciiButton>
-                  <AsciiButton variant="danger" onClick={onConfirm}>
+                  <AsciiButton sound="secondary" onClick={onCancel}>
+                    keep going
+                  </AsciiButton>
+                  <AsciiButton
+                    variant="danger"
+                    sound="danger"
+                    onClick={onConfirm}
+                  >
                     end &amp; get report
                   </AsciiButton>
                 </div>

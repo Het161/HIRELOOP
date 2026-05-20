@@ -1,6 +1,7 @@
 "use client";
 
 import TerminalWindow from "@/components/shared/TerminalWindow";
+import { playClick } from "@/lib/sounds";
 import type { Seniority } from "@/types";
 
 interface DifficultyPickerProps {
@@ -45,7 +46,10 @@ export default function DifficultyPicker({ selected, onSelect }: DifficultyPicke
           <button
             key={value}
             type="button"
-            onClick={() => onSelect(value)}
+            onClick={() => {
+              playClick("toggle");
+              onSelect(value);
+            }}
             aria-pressed={isSelected}
             className="text-left focus-visible:outline-none"
           >

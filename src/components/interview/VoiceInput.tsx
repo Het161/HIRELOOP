@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { SpeechService } from "@/services/speech.service";
 import TerminalWindow from "@/components/shared/TerminalWindow";
 import AsciiButton from "@/components/shared/AsciiButton";
+import { playClick } from "@/lib/sounds";
 import type { Seniority } from "@/types";
 
 interface VoiceInputProps {
@@ -142,7 +143,10 @@ export default function VoiceInput({
         <div className="mb-3 flex items-center gap-3">
           <button
             type="button"
-            onClick={handleMicClick}
+            onClick={() => {
+              if (!(disabled && !speaking)) playClick("toggle");
+              handleMicClick();
+            }}
             disabled={disabled && !speaking}
             aria-label={
               speaking
@@ -181,7 +185,7 @@ export default function VoiceInput({
             [ auto-submits on silence · tap mic to submit now ]
           </span>
           {isListening && (
-            <AsciiButton onClick={() => handleSubmit(interim)}>
+            <AsciiButton sound="primary" onClick={() => handleSubmit(interim)}>
               submit <span className="btn-ret">↵</span>
             </AsciiButton>
           )}

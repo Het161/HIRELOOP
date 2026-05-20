@@ -192,6 +192,7 @@ export default function SetupFlow({
               </span>
             )}
             <AsciiButton
+              sound="primary"
               onClick={handleContinue}
               disabled={!ready || submitting}
             >

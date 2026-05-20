@@ -6,6 +6,7 @@
  * ============================================================ */
 
 import { useState } from "react";
+import { playClick } from "@/lib/sounds";
 
 export function ShareReportButton() {
   const [copied, setCopied] = useState(false);
@@ -14,9 +15,10 @@ export function ShareReportButton() {
     try {
       await navigator.clipboard.writeText(window.location.href);
       setCopied(true);
+      playClick("success");
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Fallback: noop — clipboard access denied
+      playClick("danger");
     }
   };
 

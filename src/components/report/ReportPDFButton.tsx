@@ -10,6 +10,7 @@
 import { useState } from "react";
 import { pdf } from "@react-pdf/renderer";
 import { ReportPDF } from "@/components/pdf/ReportPDF";
+import { playClick } from "@/lib/sounds";
 import type { InterviewReport } from "@/types";
 
 interface ReportPDFButtonProps {
@@ -21,6 +22,7 @@ export function ReportPDFButton({ report, roleName }: ReportPDFButtonProps) {
   const [loading, setLoading] = useState(false);
 
   const handleDownload = async () => {
+    playClick("primary");
     setLoading(true);
     try {
       const blob = await pdf(
@@ -35,8 +37,10 @@ export function ReportPDFButton({ report, roleName }: ReportPDFButtonProps) {
       link.click();
       document.body.removeChild(link);
       setTimeout(() => URL.revokeObjectURL(url), 1000);
+      playClick("success");
     } catch (err) {
       console.error("PDF generation failed:", err);
+      playClick("danger");
     } finally {
       setLoading(false);
     }

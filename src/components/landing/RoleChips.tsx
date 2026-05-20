@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { getRole } from "@/lib/roles";
+import { playClick } from "@/lib/sounds";
 
 /* ============================================================ *
  * RoleChips — three file-path-style role chips. Click opens a
@@ -49,6 +50,7 @@ export default function RoleChips() {
               className="border border-border px-3 py-1.5 text-muted transition-colors hover:text-accent2"
               onClick={(e) => {
                 e.stopPropagation();
+                playClick("toggle");
                 setOpen(isOpen ? null : id);
               }}
             >
@@ -76,6 +78,7 @@ export default function RoleChips() {
                 <button
                   className="mt-2 text-accent2 transition-colors hover:text-paper"
                   onClick={() => {
+                    playClick("primary");
                     router.push(`/setup?role=${id}`);
                     setOpen(null);
                   }}

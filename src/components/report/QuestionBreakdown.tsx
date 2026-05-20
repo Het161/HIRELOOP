@@ -9,6 +9,7 @@
 
 import { useState } from "react";
 import TerminalWindow from "@/components/shared/TerminalWindow";
+import { playClick } from "@/lib/sounds";
 import type { QuestionBreakdown as QB } from "@/types";
 
 interface QuestionBreakdownProps {
@@ -58,7 +59,10 @@ function QuestionCard({ item, index }: CardProps) {
         {/* Model answer toggle */}
         <button
           type="button"
-          onClick={() => setShowModel((v) => !v)}
+          onClick={() => {
+            playClick("soft");
+            setShowModel((v) => !v);
+          }}
           className="text-[12.5px] text-accent2 transition-colors hover:text-paper"
         >
           {showModel ? "[▾ hide model answer]" : "[▸ show model answer]"}

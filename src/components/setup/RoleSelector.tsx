@@ -5,6 +5,7 @@ import {
   CATEGORY_LABELS,
   getRolesByCategory,
 } from "@/lib/roles";
+import { playClick } from "@/lib/sounds";
 import type { Role, RoleCategory } from "@/types";
 
 interface RoleSelectorProps {
@@ -77,7 +78,10 @@ export default function RoleSelector({
                     <button
                       key={role.id}
                       type="button"
-                      onClick={() => onSelect(role.id)}
+                      onClick={() => {
+                        playClick("toggle");
+                        onSelect(role.id);
+                      }}
                       className={`row-hover${isSelected ? " selected" : ""} w-full text-left flex items-baseline gap-2 py-0.5 cursor-pointer`}
                     >
                       <span className="text-dim flex-none select-none">

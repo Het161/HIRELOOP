@@ -1,6 +1,7 @@
 "use client";
 
 import TerminalWindow from "@/components/shared/TerminalWindow";
+import { playClick } from "@/lib/sounds";
 import type { InterviewMode } from "@/types";
 
 interface ModeToggleProps {
@@ -26,7 +27,10 @@ export default function ModeToggle({
         <button
           type="button"
           onClick={() => {
-            if (tavusAvailable) onSelect("voice");
+            if (tavusAvailable) {
+              playClick("toggle");
+              onSelect("voice");
+            }
           }}
           disabled={!tavusAvailable}
           aria-pressed={videoSelected}
@@ -79,7 +83,10 @@ export default function ModeToggle({
         {/* Text */}
         <button
           type="button"
-          onClick={() => onSelect("text")}
+          onClick={() => {
+            playClick("toggle");
+            onSelect("text");
+          }}
           aria-pressed={textSelected}
           className="text-left focus-visible:outline-none"
         >

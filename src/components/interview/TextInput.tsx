@@ -61,7 +61,11 @@ export default function TextInput({ onSubmit, disabled }: TextInputProps) {
         <span className="text-[12px] text-dim">
           [ ↵ submit · ⇧↵ newline ]
         </span>
-        <AsciiButton onClick={submit} disabled={disabled || !value.trim()}>
+        <AsciiButton
+          sound="primary"
+          onClick={submit}
+          disabled={disabled || !value.trim()}
+        >
           submit <span className="btn-ret">↵</span>
         </AsciiButton>
       </div>

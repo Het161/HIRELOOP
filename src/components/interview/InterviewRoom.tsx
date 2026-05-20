@@ -315,7 +315,11 @@ export default function InterviewRoom({
           <span className="text-paper">{sessionId.slice(0, 12)}</span>
         </div>
         <Timer onTick={setRemaining} />
-        <AsciiButton variant="danger" onClick={() => setShowEndDialog(true)}>
+        <AsciiButton
+          variant="danger"
+          sound="danger"
+          onClick={() => setShowEndDialog(true)}
+        >
           end_interview
         </AsciiButton>
       </div>
@@ -347,7 +351,7 @@ export default function InterviewRoom({
           {error && (
             <div className="mt-5 border border-danger bg-surface px-4 py-3 text-[13px]">
               <div className="mb-2 text-danger">❯ error: {error}</div>
-              <AsciiButton onClick={handleRetry}>retry</AsciiButton>
+              <AsciiButton sound="secondary" onClick={handleRetry}>retry</AsciiButton>
             </div>
           )}
 
@@ -364,7 +368,7 @@ export default function InterviewRoom({
                       ❯ {endError}
                     </div>
                   )}
-                  <AsciiButton onClick={endInterview}>
+                  <AsciiButton sound="success" onClick={endInterview}>
                     view report <span className="btn-ret">→</span>
                   </AsciiButton>
                 </div>

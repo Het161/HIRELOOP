@@ -164,7 +164,11 @@ export default function VideoInterviewRoom({
           <span className="text-paper">{sessionId.slice(0, 12)}</span>
         </div>
         <Timer onTick={setRemaining} />
-        <AsciiButton variant="danger" onClick={() => setShowEndDialog(true)}>
+        <AsciiButton
+          variant="danger"
+          sound="danger"
+          onClick={() => setShowEndDialog(true)}
+        >
           end_interview
         </AsciiButton>
       </div>
@@ -249,7 +253,7 @@ export default function VideoInterviewRoom({
           {endError && (
             <div className="mt-4 border border-danger bg-surface px-4 py-3 text-[13px]">
               <div className="mb-2 text-danger">❯ {endError}</div>
-              <AsciiButton onClick={endInterview}>retry report</AsciiButton>
+              <AsciiButton sound="secondary" onClick={endInterview}>retry report</AsciiButton>
             </div>
           )}
         </div>

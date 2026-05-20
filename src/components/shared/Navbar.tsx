@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { toast } from "@/components/shared/Toast";
+import MuteToggle from "@/components/shared/MuteToggle";
+import { playClick } from "@/lib/sounds";
 
 /* ============================================================ *
  * Navbar — fixed tmux-style tab strip across the top of every
@@ -46,6 +48,7 @@ export default function Navbar() {
               <Link
                 key={tab.label}
                 href={tab.href}
+                onClick={() => playClick("nav")}
                 className="transition-colors hover:bg-surface2"
               >
                 {body}
@@ -64,6 +67,7 @@ export default function Navbar() {
             href="https://github.com"
             target="_blank"
             rel="noopener noreferrer"
+            onClick={() => playClick("nav")}
             className="text-muted transition-colors hover:text-paper"
           >
             [ github ]
@@ -72,17 +76,22 @@ export default function Navbar() {
             href="https://github.com"
             target="_blank"
             rel="noopener noreferrer"
+            onClick={() => playClick("nav")}
             className="hidden text-muted transition-colors hover:text-paper sm:inline"
           >
             [ docs ]
           </a>
           <button
             type="button"
-            onClick={() => toast("theme locked: phosphor-dark")}
+            onClick={() => {
+              playClick("soft");
+              toast("theme locked: phosphor-dark");
+            }}
             className="text-muted transition-colors hover:text-paper"
           >
             [ theme ]
           </button>
+          <MuteToggle />
         </div>
       </div>
     </header>

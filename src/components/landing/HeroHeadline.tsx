@@ -63,7 +63,7 @@ export default function HeroHeadline() {
       </p>
 
       <div className="mt-10 flex flex-wrap items-center gap-5">
-        <AsciiButton onClick={() => router.push("/setup")}>
+        <AsciiButton sound="primary" onClick={() => router.push("/setup")}>
           press enter to start <span className="btn-ret">↵</span>
         </AsciiButton>
         <span className="hidden text-[13px] text-dim sm:inline">
