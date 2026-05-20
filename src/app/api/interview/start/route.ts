@@ -61,31 +61,40 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
-  let tavusUrl: string | null = null;
-
-  // Video mode → create a Tavus conversation (best-effort: any failure
-  // simply falls back to the standard voice/text interview flow).
-  if (body.mode === "voice" && process.env.TAVUS_API_KEY) {
+  // Tavus is opt-in. The 3D-model panel has been replaced with a reactive
+  // ASCII waveform driven by Cartesia TTS, so the per-interview persona +
+  // conversation calls (~30s combined) are skipped by default and the
+  // voice flow starts instantly. Set ENABLE_TAVUS_VIDEO=true to re-enable
+  // the photorealistic interviewer.
+  if (
+    body.mode === "voice" &&
+    process.env.ENABLE_TAVUS_VIDEO === "true" &&
+    process.env.TAVUS_API_KEY
+  ) {
     const baseUrl = resolveBaseUrl(req);
     const isPublic =
       !!baseUrl && !/localhost|127\.0\.0\.1|0\.0\.0\.0/.test(baseUrl);
 
     if (isPublic && baseUrl) {
-      try {
-        const conversation = await createTavusConversation({
-          role,
-          seniority: body.seniority,
-          customLlmUrl: `${baseUrl}/api/tavus-llm/${session.id}`,
+      // Fire-and-forget — don't block interview start on the Tavus round-trip.
+      // When the conversation is ready the session row gets the URL, and the
+      // interview page picks it up on a later visit. The current visit lands
+      // in the standard voice flow.
+      createTavusConversation({
+        role,
+        seniority: body.seniority,
+        customLlmUrl: `${baseUrl}/api/tavus-llm/${session.id}`,
+      })
+        .then((conversation) =>
+          setTavusConversation(
+            session.id,
+            conversation.conversationId,
+            conversation.conversationUrl,
+          ),
+        )
+        .catch((err) => {
+          console.error("Tavus conversation creation failed:", err);
         });
-        tavusUrl = conversation.conversationUrl;
-        await setTavusConversation(
-          session.id,
-          conversation.conversationId,
-          conversation.conversationUrl,
-        );
-      } catch (err) {
-        console.error("Tavus conversation creation failed:", err);
-      }
     } else {
       console.warn(
         "Tavus skipped — NEXT_PUBLIC_APP_URL is not a public URL. " +
@@ -95,5 +104,5 @@ export async function POST(req: Request): Promise<Response> {
     }
   }
 
-  return Response.json({ sessionId: session.id, tavusUrl });
+  return Response.json({ sessionId: session.id, tavusUrl: null });
 }
