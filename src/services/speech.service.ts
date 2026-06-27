@@ -118,7 +118,10 @@ export class SpeechService {
   async speak(text: string): Promise<void> {
     this.cancelSpeak();
 
-    const clean = text.replace(/\[INTERVIEW_COMPLETE\]/g, "").trim();
+    const clean = text
+      .replace(/\[INTERVIEW_COMPLETE\]/g, "")
+      .replace(/\[KEY\]/g, "")
+      .trim();
     if (!clean) return;
 
     try {

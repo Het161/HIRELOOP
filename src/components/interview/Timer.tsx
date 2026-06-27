@@ -1,8 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-
-const TOTAL_SECONDS = 30 * 60; // 30 minutes
+import { useEffect, useRef, useState } from "react";
 
 function formatTime(secs: number): string {
   const m = Math.floor(secs / 60);
@@ -11,14 +9,30 @@ function formatTime(secs: number): string {
 }
 
 interface TimerProps {
+  /** Total interview length in minutes. */
+  durationMinutes?: number;
   onTick?: (remaining: number) => void;
+  /** Fired exactly once when the countdown reaches zero. */
+  onComplete?: () => void;
 }
 
-export default function Timer({ onTick }: TimerProps) {
-  const [remaining, setRemaining] = useState(TOTAL_SECONDS);
+export default function Timer({
+  durationMinutes = 30,
+  onTick,
+  onComplete,
+}: TimerProps) {
+  const total = Math.max(1, Math.round(durationMinutes)) * 60;
+  const [remaining, setRemaining] = useState(total);
+  const firedRef = useRef(false);
 
   useEffect(() => {
-    if (remaining <= 0) return;
+    if (remaining <= 0) {
+      if (!firedRef.current) {
+        firedRef.current = true;
+        onComplete?.();
+      }
+      return;
+    }
     const id = setInterval(() => {
       setRemaining((prev) => {
         const next = Math.max(0, prev - 1);
@@ -27,9 +41,9 @@ export default function Timer({ onTick }: TimerProps) {
       });
     }, 1000);
     return () => clearInterval(id);
-  }, [remaining, onTick]);
+  }, [remaining, onTick, onComplete]);
 
-  const isLow = remaining < 5 * 60;
+  const isLow = remaining < 60 || remaining < total * 0.15;
 
   return (
     <span

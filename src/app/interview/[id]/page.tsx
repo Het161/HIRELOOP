@@ -27,6 +27,7 @@ export default async function InterviewPage({
         roleId={session.roleId}
         seniority={session.seniority}
         tavusUrl={session.tavusConversationUrl}
+        durationMinutes={session.durationMinutes}
       />
     );
   }
@@ -38,6 +39,7 @@ export default async function InterviewPage({
       mode={session.mode}
       roleId={session.roleId}
       seniority={session.seniority}
+      durationMinutes={session.durationMinutes}
     />
   );
 }

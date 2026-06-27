@@ -68,6 +68,7 @@ export interface SessionDoc {
   roleId: string;
   seniority: Seniority;
   mode: InterviewMode;
+  durationMinutes: number;
   messages: Message[];
   startedAt: Date;
   endedAt: Date | null;
@@ -97,6 +98,7 @@ const SessionSchema = new Schema<SessionDoc>(
       required: true,
     },
     mode: { type: String, enum: ["voice", "text"], required: true },
+    durationMinutes: { type: Number, required: true, default: 30 },
     messages: { type: [MessageSchema], default: [] },
     startedAt: { type: Date, required: true, default: Date.now },
     endedAt: { type: Date, default: null },

@@ -40,6 +40,8 @@ export interface InterviewSession {
   seniority: Seniority;
   mode: InterviewMode;
   messages: Message[];
+  /** Total interview length the candidate chose, in minutes. */
+  durationMinutes: number;
   startedAt: Date;
   endedAt: Date | null;
   isComplete: boolean;
@@ -102,6 +104,8 @@ export interface StartInterviewRequest {
   roleId: string;
   seniority: Seniority;
   mode: InterviewMode;
+  /** How long the interview should run, in minutes. */
+  durationMinutes: number;
 }
 
 export interface StartInterviewResponse {

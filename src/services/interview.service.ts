@@ -26,6 +26,7 @@ function toSession(doc: SessionDoc & { _id?: unknown }): InterviewSession {
     roleId: doc.roleId,
     seniority: doc.seniority,
     mode: doc.mode,
+    durationMinutes: doc.durationMinutes ?? 30,
     messages: (doc.messages ?? []).map((m) => ({
       role: m.role,
       content: m.content,
@@ -72,6 +73,7 @@ export async function createSession(
   roleId: string,
   seniority: Seniority,
   mode: InterviewMode,
+  durationMinutes: number,
 ): Promise<InterviewSession> {
   await connectDB();
   const doc = await SessionModel.create({
@@ -79,6 +81,7 @@ export async function createSession(
     roleId,
     seniority,
     mode,
+    durationMinutes,
     messages: [],
     startedAt: new Date(),
     endedAt: null,

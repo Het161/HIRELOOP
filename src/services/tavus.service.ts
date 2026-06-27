@@ -41,7 +41,11 @@ async function createPersona(
     body: JSON.stringify({
       persona_name: `HireLoop · ${params.role.name} · ${params.seniority}`,
       pipeline_mode: "full",
-      system_prompt: buildInterviewerSystemPrompt(params.role, params.seniority),
+      system_prompt: buildInterviewerSystemPrompt(
+        params.role,
+        params.seniority,
+        { keyMarker: false },
+      ),
       default_replica_id: replicaId,
       layers: {
         llm: {

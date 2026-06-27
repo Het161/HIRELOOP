@@ -48,9 +48,21 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json({ error: "Invalid mode" }, { status: 400 });
   }
 
+  // Clamp the requested length to a sane 1–60 minute window; default 15.
+  const durationMinutes = Math.round(body.durationMinutes);
+  const duration =
+    Number.isFinite(durationMinutes) && durationMinutes > 0
+      ? Math.min(60, Math.max(1, durationMinutes))
+      : 15;
+
   let session: InterviewSession;
   try {
-    session = await createSession(body.roleId, body.seniority, body.mode);
+    session = await createSession(
+      body.roleId,
+      body.seniority,
+      body.mode,
+      duration,
+    );
   } catch (err) {
     return Response.json(
       {

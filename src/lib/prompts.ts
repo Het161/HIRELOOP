@@ -1,4 +1,5 @@
 import type { Message, Role, Seniority } from "@/types";
+import { hashSeed, seededShuffle } from "@/lib/utils";
 
 /* ============================================================ *
  * System prompt templates for the AI interviewer + report grader.
@@ -6,11 +7,69 @@ import type { Message, Role, Seniority } from "@/types";
  * instructions to stay in character and emit clean JSON.
  * ============================================================ */
 
+/** Distinct opening angles — rotated per session so no two interviews feel alike. */
+const OPENING_ANGLES = [
+  "Open with a real-world debugging war story scenario and ask how they'd diagnose it.",
+  "Open with a crisp fundamentals question to calibrate, then go deeper fast.",
+  "Open with a system-design framing: a product feature they must architect.",
+  "Open with a trade-off question — two reasonable approaches, which and why.",
+  "Open with a 'tell me about a time' style behavioral hook tied to the role.",
+  "Open with a code-review-style scenario: something is wrong, what do they spot.",
+  "Open with a scaling problem: it works for 100 users, now make it work for 10 million.",
+  "Open with an opinionated take and ask them to push back or agree with reasons.",
+];
+
+/** Question-style flavors — the seed picks one to bias this session's mix. */
+const STYLE_FLAVORS = [
+  "Lean scenario-heavy: most questions are concrete situations, not definitions.",
+  "Lean systems-thinking: emphasize architecture, trade-offs, and failure modes.",
+  "Lean hands-on: emphasize how they'd actually implement and test things.",
+  "Lean breadth-first: hop across many topics quickly, one sharp question each.",
+  "Lean depth-first: pick a few topics and drill into edge cases relentlessly.",
+];
+
+export interface InterviewerPromptOptions {
+  /** Stable per-session seed — drives question variety across attempts. */
+  seed?: number;
+  /** Total interview length the candidate chose, in minutes. */
+  durationMinutes?: number;
+  /**
+   * Whether to instruct the model to tag pivotal questions with [KEY].
+   * Only the text/voice room renders the visual flash, so the Tavus
+   * video path disables it to avoid the marker being spoken aloud.
+   * Defaults to true.
+   */
+  keyMarker?: boolean;
+}
+
 /** Builds the system prompt that turns the LLM into the interviewer. */
 export function buildInterviewerSystemPrompt(
   role: Role,
   seniority: Seniority,
+  options: InterviewerPromptOptions = {},
 ): string {
+  const seed = options.seed ?? hashSeed(role.id + seniority);
+  const duration = Math.max(1, Math.round(options.durationMinutes ?? 30));
+
+  // Seeded variety: shuffle the topic order, pick a fresh opening angle and a
+  // style flavor. Same session → same plan (so retries are stable); a new
+  // session → a genuinely different interview for the same role.
+  const topicOrder = seededShuffle(role.topics, seed);
+  const opening = OPENING_ANGLES[seed % OPENING_ANGLES.length];
+  const flavor = STYLE_FLAVORS[(seed >>> 3) % STYLE_FLAVORS.length];
+
+  // Pace question count to the chosen duration (~2.5 min/question, clamped).
+  const targetQuestions = Math.max(4, Math.min(14, Math.round(duration / 2.5)));
+
+  const keyMarkerBlock =
+    options.keyMarker === false
+      ? ""
+      : `
+IMPORTANT-QUESTION MARKER:
+- For the 2-3 most PIVOTAL questions of the interview (the make-or-break, deep ones), begin that single turn with the literal tag [KEY] on its own, immediately followed by the question. Example: "[KEY] Okay — here's the big one. How would you design...?"
+- Use [KEY] sparingly. Most turns must NOT have it. Never put [KEY] on a simple warm-up or a quick follow-up.
+`;
+
   return `You are a senior hiring manager at a top tech company conducting a ${seniority}-level ${role.name} interview.
 
 CRITICAL RULES — DO NOT BREAK THESE:
@@ -20,6 +79,7 @@ CRITICAL RULES — DO NOT BREAK THESE:
 - Always end with a question mark when asking a question.
 - Do NOT summarize previous answers back to the candidate.
 - Do NOT give away answers, hints, or the "correct" approach.
+- NEVER repeat a question you have already asked earlier in this conversation. Each question must explore new ground.
 
 SPEECH STYLE (this will be spoken aloud by a TTS engine):
 - Write like you would actually SPEAK, not write. Use natural conversational rhythm.
@@ -31,11 +91,13 @@ SPEECH STYLE (this will be spoken aloud by a TTS engine):
 - Vary sentence length. Mix short punchy sentences with longer thoughtful ones.
 - Sound like a real senior engineer talking to a colleague — warm but precise.
 
-INTERVIEW PLAN:
-- Duration: 30 minutes max
-- Ask 8-12 adaptive questions covering: ${role.topics.join(", ")}
-- Mix: ~40% conceptual, ~30% scenario-based, ~20% system/design, ~10% behavioral
-
+THIS SESSION'S UNIQUE PLAN (follow it so this interview differs from every other one for this role):
+- ${opening}
+- ${flavor}
+- Walk the candidate's focus areas roughly in THIS order, adapting as you go: ${topicOrder.join(", ")}
+- Duration: about ${duration} minutes. Pace yourself to ask roughly ${targetQuestions} substantive questions in that window — not more.
+- Mix: ~40% conceptual, ~30% scenario-based, ~20% system/design, ~10% behavioral.
+${keyMarkerBlock}
 ADAPTIVE BEHAVIOR:
 1. Ask ONE question, then STOP. Wait for their answer.
 2. If their answer is strong → follow up on trade-offs, edge cases, or a deeper layer.
@@ -45,10 +107,10 @@ ADAPTIVE BEHAVIOR:
 6. Warm but professional tone. This is supportive, not adversarial.
 
 INTERVIEW START:
-Begin with ONE warm sentence intro + your first question. Example: "Thanks for joining. Let's start simple — can you tell me what makes React different from vanilla JS for building UIs?"
+Begin with ONE warm sentence intro + your first question, honoring this session's opening angle above.
 
 INTERVIEW END:
-After 8-12 substantive questions OR when the conversation has covered enough ground, output EXACTLY this format on its own:
+After about ${targetQuestions} substantive questions OR when the conversation has covered enough ground, output EXACTLY this format on its own:
 [INTERVIEW_COMPLETE]
 Followed by a brief warm closing in one sentence.
 

@@ -1,4 +1,5 @@
 import { getRole } from "@/lib/roles";
+import { hashSeed } from "@/lib/utils";
 import { streamInterviewerResponse } from "@/services/ai.service";
 import {
   appendMessage,
@@ -73,6 +74,10 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const { seniority, messages } = session;
+  // Stable per-session seed → this interview's question plan stays consistent
+  // across retries but differs from every other session for the same role.
+  const seed = hashSeed(sessionId);
+  const durationMinutes = session.durationMinutes;
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream<Uint8Array>({
@@ -89,6 +94,7 @@ export async function POST(req: Request): Promise<Response> {
           role,
           seniority,
           messages,
+          { seed, durationMinutes },
         )) {
           fullText += chunk;
           send({ chunk });

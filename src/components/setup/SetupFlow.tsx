@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import RoleSelector from "./RoleSelector";
 import DifficultyPicker from "./DifficultyPicker";
+import DurationPicker from "./DurationPicker";
 import ModeToggle from "./ModeToggle";
 import TerminalWindow from "@/components/shared/TerminalWindow";
 import AsciiButton from "@/components/shared/AsciiButton";
@@ -37,17 +38,19 @@ export default function SetupFlow({
   const [roleId, setRoleId] = useState<string | null>(resolvedInitialRole);
   const [query, setQuery] = useState("");
   const [seniority, setSeniority] = useState<Seniority | null>(null);
+  const [duration, setDuration] = useState<number | null>(null);
   const [mode, setMode] = useState<InterviewMode | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const selectedRole = roleId ? getRole(roleId) : null;
-  const ready = roleId !== null && seniority !== null && mode !== null;
+  const ready =
+    roleId !== null && seniority !== null && duration !== null && mode !== null;
   // The "voice" value is shown to the candidate as "video".
   const modeLabel = mode === "voice" ? "video" : mode;
 
   async function handleContinue() {
-    if (!ready || !roleId || !seniority || !mode) return;
+    if (!ready || !roleId || !seniority || !duration || !mode) return;
     setSubmitting(true);
     setError(null);
 
@@ -55,7 +58,12 @@ export default function SetupFlow({
       const res = await fetch("/api/interview/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roleId, seniority, mode }),
+        body: JSON.stringify({
+          roleId,
+          seniority,
+          mode,
+          durationMinutes: duration,
+        }),
       });
 
       if (!res.ok) {
@@ -97,6 +105,13 @@ export default function SetupFlow({
             <Marker done={seniority !== null} />{" "}
             <span className={seniority ? "text-paper" : "text-dim"}>
               {seniority ? `seniority: ${seniority}` : "seniority"}
+            </span>
+          </span>
+          <span className="px-2 text-dim">──</span>
+          <span>
+            <Marker done={duration !== null} />{" "}
+            <span className={duration ? "text-paper" : "text-dim"}>
+              {duration ? `length: ${duration}m` : "length"}
             </span>
           </span>
           <span className="px-2 text-dim">──</span>
@@ -146,10 +161,19 @@ export default function SetupFlow({
           <DifficultyPicker selected={seniority} onSelect={setSeniority} />
         </section>
 
-        {/* STEP 3 — mode */}
-        <section className="mb-6">
+        {/* STEP 3 — duration */}
+        <section className="mb-14">
           <div className="mb-6 text-[14px]">
             <span className="text-accent2">03</span>{" "}
+            <span className="text-muted">how long should it run?</span>
+          </div>
+          <DurationPicker selected={duration} onSelect={setDuration} />
+        </section>
+
+        {/* STEP 4 — mode */}
+        <section className="mb-6">
+          <div className="mb-6 text-[14px]">
+            <span className="text-accent2">04</span>{" "}
             <span className="text-muted">select interview mode</span>
           </div>
           <ModeToggle
@@ -174,6 +198,13 @@ export default function SetupFlow({
             seniority:{" "}
             {seniority ? (
               <span className="text-paper">{seniority}</span>
+            ) : (
+              <span className="text-dim">—</span>
+            )}
+            <span className="px-2 text-dim">·</span>
+            length:{" "}
+            {duration ? (
+              <span className="text-paper">{duration}m</span>
             ) : (
               <span className="text-dim">—</span>
             )}

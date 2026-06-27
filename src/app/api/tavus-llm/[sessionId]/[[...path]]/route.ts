@@ -101,6 +101,7 @@ export async function POST(
           role,
           seniority,
           history,
+          { keyMarker: false },
         )) {
           assistantText += piece;
           emit(piece, null);

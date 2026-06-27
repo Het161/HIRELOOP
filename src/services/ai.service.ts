@@ -15,11 +15,18 @@ import type {
  * grader. Every LLM call in HireLoop goes through this module.
  * ============================================================ */
 
-/** Active Groq model. Swap here to change the LLM. */
+/** Active Groq model for report grading — quality over latency. */
 export const GROQ_MODEL = "llama-3.3-70b-versatile";
 // Alternatives if needed: "llama-3.1-8b-instant" (faster), "openai/gpt-oss-120b"
 
-const INTERVIEWER_MAX_TOKENS = 1024;
+/**
+ * Live interviewer turns use the instant model: interview replies are only
+ * 1-3 spoken sentences, so the 8B model is more than capable AND cuts
+ * time-to-first-token dramatically — the audio starts almost immediately.
+ */
+export const GROQ_INTERVIEWER_MODEL = "llama-3.1-8b-instant";
+
+const INTERVIEWER_MAX_TOKENS = 256;
 const REPORT_MAX_TOKENS = 4096;
 
 /** Lazily-constructed, cached Groq client (never crashes at import time). */
@@ -49,8 +56,9 @@ export async function* streamInterviewerResponse(
   role: Role,
   seniority: Seniority,
   messages: Message[],
+  options: { seed?: number; durationMinutes?: number; keyMarker?: boolean } = {},
 ): AsyncGenerator<string, void, unknown> {
-  const systemPrompt = buildInterviewerSystemPrompt(role, seniority);
+  const systemPrompt = buildInterviewerSystemPrompt(role, seniority, options);
 
   // Convert internal Message[] to Groq's OpenAI-style format.
   const convo = messages.map((m) => ({
@@ -68,9 +76,9 @@ export async function* streamInterviewerResponse(
   }
 
   const stream = await getGroq().chat.completions.create({
-    model: GROQ_MODEL,
+    model: GROQ_INTERVIEWER_MODEL,
     messages: [{ role: "system" as const, content: systemPrompt }, ...convo],
-    temperature: 0.7,
+    temperature: 0.85,
     max_tokens: INTERVIEWER_MAX_TOKENS,
     stream: true,
   });
