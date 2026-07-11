@@ -62,13 +62,13 @@ export async function POST(req: Request): Promise<Response> {
           id: voiceId,
           __experimental_controls: { speed, emotion },
         },
-        // Lighter format → Cartesia synthesizes faster and the client
-        // downloads far fewer bytes, so speech starts noticeably sooner.
-        // 24kHz/48kbps mp3 is plenty for a spoken voice.
+        // Clear, full-quality speech. Latency is handled on the client by
+        // streaming these bytes into playback as they arrive (MediaSource),
+        // so we no longer need to trade audio quality for a faster start.
         output_format: {
           container: "mp3",
-          bit_rate: 48000,
-          sample_rate: 24000,
+          bit_rate: 128000,
+          sample_rate: 44100,
         },
         language: "en",
       }),

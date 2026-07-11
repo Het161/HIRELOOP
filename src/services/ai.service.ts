@@ -1,8 +1,16 @@
 import Groq from "groq-sdk";
-import { buildInterviewerSystemPrompt, buildReportPrompt } from "@/lib/prompts";
+import {
+  buildDsaInterviewerSystemPrompt,
+  buildDsaReportPrompt,
+  buildInterviewerSystemPrompt,
+  buildReportPrompt,
+} from "@/lib/prompts";
 import { clamp } from "@/lib/utils";
 import type {
+  CodeLanguage,
+  DsaDifficulty,
   InterviewReport,
+  InterviewType,
   Message,
   QuestionBreakdown,
   RecommendedResource,
@@ -56,9 +64,24 @@ export async function* streamInterviewerResponse(
   role: Role,
   seniority: Seniority,
   messages: Message[],
-  options: { seed?: number; durationMinutes?: number; keyMarker?: boolean } = {},
+  options: {
+    seed?: number;
+    durationMinutes?: number;
+    keyMarker?: boolean;
+    interviewType?: InterviewType;
+    dsaDifficulty?: DsaDifficulty;
+    language?: CodeLanguage;
+  } = {},
 ): AsyncGenerator<string, void, unknown> {
-  const systemPrompt = buildInterviewerSystemPrompt(role, seniority, options);
+  const systemPrompt =
+    options.interviewType === "dsa" && options.dsaDifficulty && options.language
+      ? buildDsaInterviewerSystemPrompt({
+          difficulty: options.dsaDifficulty,
+          language: options.language,
+          seed: options.seed,
+          durationMinutes: options.durationMinutes,
+        })
+      : buildInterviewerSystemPrompt(role, seniority, options);
 
   // Convert internal Message[] to Groq's OpenAI-style format.
   const convo = messages.map((m) => ({
@@ -213,7 +236,17 @@ export async function generateReport(
   role: Role,
   seniority: Seniority,
   transcript: Message[],
+  opts: {
+    interviewType?: InterviewType;
+    dsaDifficulty?: DsaDifficulty;
+    language?: CodeLanguage;
+  } = {},
 ): Promise<Omit<InterviewReport, "_id" | "sessionId" | "generatedAt">> {
+  const userPrompt =
+    opts.interviewType === "dsa" && opts.dsaDifficulty && opts.language
+      ? buildDsaReportPrompt(opts.dsaDifficulty, opts.language, transcript)
+      : buildReportPrompt(role, seniority, transcript);
+
   const response = await getGroq().chat.completions.create({
     model: GROQ_MODEL,
     messages: [
@@ -222,7 +255,7 @@ export async function generateReport(
         content:
           "You are a senior engineering manager. You ALWAYS respond with valid JSON only — no markdown, no backticks, no preamble, no explanation. Just the raw JSON object.",
       },
-      { role: "user", content: buildReportPrompt(role, seniority, transcript) },
+      { role: "user", content: userPrompt },
     ],
     temperature: 0.4,
     max_tokens: REPORT_MAX_TOKENS,

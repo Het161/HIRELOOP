@@ -14,6 +14,21 @@ export type Seniority = "junior" | "mid" | "senior";
 
 export type InterviewMode = "voice" | "text";
 
+/** Role-based behavioral/technical interview vs a DSA/coding interview. */
+export type InterviewType = "role" | "dsa";
+
+/** Difficulty band for a DSA/coding interview. */
+export type DsaDifficulty = "very-easy" | "easy" | "medium" | "hard";
+
+/** Programming language the candidate writes their solution in. */
+export type CodeLanguage =
+  | "python"
+  | "javascript"
+  | "typescript"
+  | "java"
+  | "cpp"
+  | "go";
+
 export interface Role {
   id: string;
   name: string;
@@ -39,6 +54,12 @@ export interface InterviewSession {
   roleId: string;
   seniority: Seniority;
   mode: InterviewMode;
+  /** "role" (default) or "dsa" coding interview. */
+  interviewType: InterviewType;
+  /** DSA difficulty band — only set when interviewType === "dsa". */
+  dsaDifficulty?: DsaDifficulty;
+  /** Editor language — only set when interviewType === "dsa". */
+  language?: CodeLanguage;
   messages: Message[];
   /** Total interview length the candidate chose, in minutes. */
   durationMinutes: number;
@@ -106,6 +127,12 @@ export interface StartInterviewRequest {
   mode: InterviewMode;
   /** How long the interview should run, in minutes. */
   durationMinutes: number;
+  /** Defaults to "role" when omitted. */
+  interviewType?: InterviewType;
+  /** Required when interviewType === "dsa". */
+  dsaDifficulty?: DsaDifficulty;
+  /** Required when interviewType === "dsa". */
+  language?: CodeLanguage;
 }
 
 export interface StartInterviewResponse {

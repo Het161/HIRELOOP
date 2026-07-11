@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getSession } from "@/services/interview.service";
 import InterviewRoom from "@/components/interview/InterviewRoom";
 import VideoInterviewRoom from "@/components/interview/VideoInterviewRoom";
+import DsaInterviewRoom from "@/components/interview/DsaInterviewRoom";
 import type { InterviewSession } from "@/types";
 
 export default async function InterviewPage({
@@ -18,6 +19,18 @@ export default async function InterviewPage({
     session = null;
   }
   if (!session) notFound();
+
+  // DSA coding interview → code editor room.
+  if (session.interviewType === "dsa" && session.dsaDifficulty && session.language) {
+    return (
+      <DsaInterviewRoom
+        sessionId={session.id}
+        difficulty={session.dsaDifficulty}
+        language={session.language}
+        durationMinutes={session.durationMinutes}
+      />
+    );
+  }
 
   // Video mode with a live Tavus conversation → photorealistic interviewer.
   if (session.mode === "voice" && session.tavusConversationUrl) {

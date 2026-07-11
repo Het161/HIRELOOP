@@ -7,9 +7,12 @@ import {
   type SessionDoc,
 } from "@/lib/mongodb";
 import type {
+  CodeLanguage,
+  DsaDifficulty,
   InterviewMode,
   InterviewReport,
   InterviewSession,
+  InterviewType,
   Message,
   Seniority,
 } from "@/types";
@@ -26,6 +29,9 @@ function toSession(doc: SessionDoc & { _id?: unknown }): InterviewSession {
     roleId: doc.roleId,
     seniority: doc.seniority,
     mode: doc.mode,
+    interviewType: doc.interviewType ?? "role",
+    dsaDifficulty: doc.dsaDifficulty,
+    language: doc.language,
     durationMinutes: doc.durationMinutes ?? 30,
     messages: (doc.messages ?? []).map((m) => ({
       role: m.role,
@@ -68,20 +74,30 @@ function toReport(doc: ReportDoc & { _id?: unknown }): InterviewReport {
   };
 }
 
+export interface CreateSessionInput {
+  roleId: string;
+  seniority: Seniority;
+  mode: InterviewMode;
+  durationMinutes: number;
+  interviewType: InterviewType;
+  dsaDifficulty?: DsaDifficulty;
+  language?: CodeLanguage;
+}
+
 /** Create a fresh interview session with a public UUID. */
 export async function createSession(
-  roleId: string,
-  seniority: Seniority,
-  mode: InterviewMode,
-  durationMinutes: number,
+  input: CreateSessionInput,
 ): Promise<InterviewSession> {
   await connectDB();
   const doc = await SessionModel.create({
     id: uuidv4(),
-    roleId,
-    seniority,
-    mode,
-    durationMinutes,
+    roleId: input.roleId,
+    seniority: input.seniority,
+    mode: input.mode,
+    interviewType: input.interviewType,
+    dsaDifficulty: input.dsaDifficulty,
+    language: input.language,
+    durationMinutes: input.durationMinutes,
     messages: [],
     startedAt: new Date(),
     endedAt: null,

@@ -114,6 +114,11 @@ export class SpeechService {
    * Speak `text` aloud using Cartesia Sonic. Resolves when playback
    * finishes (or is cancelled). Falls back to the browser voice if the
    * Cartesia request fails for any reason.
+   *
+   * Audio is streamed into playback via MediaSource — the voice starts the
+   * instant the first mp3 bytes arrive from Cartesia (typically a few hundred
+   * ms) rather than waiting for the whole clip to download. On browsers
+   * without streaming mp3 support we fall back to a buffered blob.
    */
   async speak(text: string): Promise<void> {
     this.cancelSpeak();
@@ -124,9 +129,10 @@ export class SpeechService {
       .trim();
     if (!clean) return;
 
+    let res: Response;
     try {
       const voice = getVoiceForSeniority(this.seniority);
-      const res = await fetch("/api/tts", {
+      res = await fetch("/api/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -136,18 +142,201 @@ export class SpeechService {
           emotion: VOICE_PARAMS.emotion,
         }),
       });
-      if (!res.ok) {
-        throw new Error(`TTS request failed (${res.status})`);
+    } catch (err) {
+      console.warn("Cartesia TTS request failed — using browser voice", err);
+      await this.fallbackSpeak(clean);
+      return;
+    }
+
+    if (!res.ok || !res.body) {
+      console.warn(`Cartesia TTS returned ${res.status} — using browser voice`);
+      await this.fallbackSpeak(clean);
+      return;
+    }
+
+    if (SpeechService.canStreamMp3()) {
+      try {
+        await this.playStream(res);
+        return;
+      } catch (err) {
+        // The response body may be partially consumed at this point, so we
+        // can't retry it as a blob — go straight to the browser voice.
+        console.warn("Streaming playback failed — using browser voice", err);
+        await this.fallbackSpeak(clean);
+        return;
       }
+    }
+
+    // No streaming mp3 support → download the whole clip, then play.
+    try {
       const blob = await res.blob();
-      if (blob.size === 0) {
-        throw new Error("TTS returned empty audio");
-      }
+      if (blob.size === 0) throw new Error("TTS returned empty audio");
       await this.playBlob(blob);
     } catch (err) {
       console.warn("Cartesia TTS failed — falling back to browser voice", err);
       await this.fallbackSpeak(clean);
     }
+  }
+
+  /** Whether this browser can stream mp3 through MediaSource. */
+  private static canStreamMp3(): boolean {
+    return (
+      typeof window !== "undefined" &&
+      typeof MediaSource !== "undefined" &&
+      typeof MediaSource.isTypeSupported === "function" &&
+      MediaSource.isTypeSupported("audio/mpeg")
+    );
+  }
+
+  /**
+   * Stream the mp3 response into an <audio> element via MediaSource, so
+   * playback begins as soon as the first chunk lands. Rejects (so the caller
+   * can fall back) only if audio never starts.
+   */
+  private playStream(res: Response): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      const body = res.body;
+      if (!body) {
+        reject(new Error("no response body"));
+        return;
+      }
+
+      const mediaSource = new MediaSource();
+      const url = URL.createObjectURL(mediaSource);
+      const audio = new Audio();
+      audio.src = url;
+      this.currentAudio = audio;
+      this.speaking = true;
+
+      let settled = false;
+      let started = false;
+      let startTimer: ReturnType<typeof setTimeout> | null = null;
+
+      const cleanup = () => {
+        this.speaking = false;
+        if (startTimer) clearTimeout(startTimer);
+        try {
+          URL.revokeObjectURL(url);
+        } catch {
+          /* ignore */
+        }
+        if (this.currentAudio === audio) this.currentAudio = null;
+        this.speakResolve = null;
+      };
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve();
+      };
+      const fail = (err: Error) => {
+        if (settled) return;
+        settled = true;
+        try {
+          audio.pause();
+        } catch {
+          /* ignore */
+        }
+        cleanup();
+        reject(err);
+      };
+
+      // cancelSpeak() resolves an in-flight turn by calling speakResolve.
+      this.speakResolve = done;
+
+      // If audio never starts, bail out to the browser voice.
+      startTimer = setTimeout(() => {
+        if (!started) fail(new Error("audio did not start"));
+      }, 6000);
+
+      audio.onplaying = () => {
+        started = true;
+        if (startTimer) {
+          clearTimeout(startTimer);
+          startTimer = null;
+        }
+      };
+      audio.onended = done;
+      audio.onerror = () => {
+        if (started) done();
+        else fail(new Error("audio element error"));
+      };
+
+      mediaSource.addEventListener("sourceopen", () => {
+        let sourceBuffer: SourceBuffer;
+        try {
+          sourceBuffer = mediaSource.addSourceBuffer("audio/mpeg");
+        } catch (err) {
+          fail(err instanceof Error ? err : new Error("addSourceBuffer failed"));
+          return;
+        }
+
+        const reader = body.getReader();
+        const queue: Uint8Array[] = [];
+        let reading = true;
+
+        const flush = () => {
+          if (settled || sourceBuffer.updating) return;
+          const chunk = queue.shift();
+          if (chunk) {
+            try {
+              // Copy into a fresh ArrayBuffer-backed view for appendBuffer.
+              sourceBuffer.appendBuffer(new Uint8Array(chunk));
+            } catch {
+              /* transient — the next updateend re-drives flush */
+            }
+            return;
+          }
+          if (!reading && mediaSource.readyState === "open") {
+            try {
+              mediaSource.endOfStream();
+            } catch {
+              /* ignore */
+            }
+          }
+        };
+
+        sourceBuffer.addEventListener("updateend", flush);
+        void audio.play().catch(() => {
+          // Autoplay blocked or interrupted — don't hang the turn.
+          done();
+        });
+
+        void (async () => {
+          try {
+            for (;;) {
+              const { done: rDone, value } = await reader.read();
+              if (settled) {
+                try {
+                  await reader.cancel();
+                } catch {
+                  /* ignore */
+                }
+                return;
+              }
+              if (rDone) {
+                reading = false;
+                flush();
+                return;
+              }
+              if (value) {
+                queue.push(value);
+                flush();
+              }
+            }
+          } catch {
+            reading = false;
+            if (mediaSource.readyState === "open") {
+              try {
+                mediaSource.endOfStream();
+              } catch {
+                /* ignore */
+              }
+            }
+          }
+        })();
+      });
+    });
   }
 
   /** Play an MP3 blob through an <audio> element. */

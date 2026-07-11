@@ -1,5 +1,12 @@
-import type { Message, Role, Seniority } from "@/types";
+import type {
+  CodeLanguage,
+  DsaDifficulty,
+  Message,
+  Role,
+  Seniority,
+} from "@/types";
 import { hashSeed, seededShuffle } from "@/lib/utils";
+import { getDifficulty, getLanguage } from "@/lib/dsa";
 
 /* ============================================================ *
  * System prompt templates for the AI interviewer + report grader.
@@ -115,6 +122,184 @@ After about ${targetQuestions} substantive questions OR when the conversation ha
 Followed by a brief warm closing in one sentence.
 
 Now begin.`;
+}
+
+/* ============================================================ *
+ * DSA / coding interview — problem-driven interviewer + grader.
+ * ============================================================ */
+
+const DSA_PROBLEM_THEMES = [
+  "arrays & hashing",
+  "two pointers / sliding window",
+  "strings",
+  "stack / queue",
+  "binary search",
+  "linked lists",
+  "trees & BFS/DFS",
+  "graphs",
+  "recursion & backtracking",
+  "dynamic programming",
+  "greedy",
+  "intervals",
+];
+
+const DIFFICULTY_GUIDANCE: Record<DsaDifficulty, string> = {
+  "very-easy":
+    "Warm-up tier. Single loop or simple string/array manipulation. No tricky edge cases. Think FizzBuzz, reverse a string, sum of an array, find the max.",
+  easy: "LeetCode Easy tier. One core idea — a hash map, two pointers, a single pass, or simple recursion. Think Two Sum, Valid Anagram, Contains Duplicate.",
+  medium:
+    "LeetCode Medium tier. Requires a real data structure or algorithm — BFS/DFS, sliding window, binary search, intro DP. Think Group Anagrams, Number of Islands, Longest Substring Without Repeating Characters.",
+  hard: "LeetCode Hard tier. Non-obvious insight, advanced DP/graphs, or tight complexity constraints. Think Word Ladder, Trapping Rain Water, Median of Two Sorted Arrays.",
+};
+
+export interface DsaInterviewerPromptOptions {
+  difficulty: DsaDifficulty;
+  language: CodeLanguage;
+  seed?: number;
+  durationMinutes?: number;
+}
+
+/** System prompt that turns the LLM into a DSA/coding interviewer. */
+export function buildDsaInterviewerSystemPrompt(
+  options: DsaInterviewerPromptOptions,
+): string {
+  const seed = options.seed ?? hashSeed(options.difficulty + options.language);
+  const duration = Math.max(1, Math.round(options.durationMinutes ?? 30));
+  const languageLabel =
+    getLanguage(options.language)?.label ?? options.language;
+  const difficultyLabel =
+    getDifficulty(options.difficulty)?.label ?? options.difficulty;
+
+  // Seeded theme order → different problems every attempt for the same setup.
+  const themeOrder = seededShuffle(DSA_PROBLEM_THEMES, seed);
+  // DSA problems take longer than chat questions — pace ~1 per 6 minutes.
+  const targetProblems = Math.max(2, Math.min(8, Math.round(duration / 6)));
+
+  return `You are a senior engineer conducting a DSA (data structures & algorithms) coding interview. The candidate writes their solution in ${languageLabel} in a live code editor and submits it to you.
+
+DIFFICULTY: ${difficultyLabel}
+${DIFFICULTY_GUIDANCE[options.difficulty]}
+
+CRITICAL RULES — DO NOT BREAK THESE:
+- Present exactly ONE problem at a time, then STOP and wait for the candidate to submit code.
+- Keep every problem at the ${difficultyLabel} level described above. Do not drift harder or easier unless the rules below say so.
+- NEVER reveal the full solution or paste working code, UNLESS the candidate explicitly gives up ("I don't know", "skip", "show me"). Then give a concise reference approach and move on.
+- Do NOT repeat a problem you already gave earlier in this conversation.
+
+PROBLEM FORMAT — use this exact plain-text layout (no markdown headers, no backticks):
+Problem N: <short title>
+<2-4 sentence problem statement>
+
+Example:
+Input: <example input>
+Output: <expected output>
+
+Constraints: <the key constraints, one line>
+
+Then a single line: "Write your solution in the editor and submit when ready."
+
+WHEN THE CANDIDATE SUBMITS CODE:
+1. Read their code carefully as ${languageLabel}.
+2. Decide if it is CORRECT — does it actually solve the problem for all valid inputs, including edge cases (empty input, duplicates, negatives, overflow, single element)?
+3. Open your reply with a one-word verdict on its own line: "Verdict: Correct", "Verdict: Almost", or "Verdict: Incorrect".
+4. Then 2-4 sentences of specific feedback: name the exact bug or missed edge case if any (quote the relevant part), and state the time and space complexity of their approach. Do NOT rewrite their code.
+5. If Incorrect/Almost, give ONE targeted hint — never the full fix.
+6. Then present the NEXT problem using the PROBLEM FORMAT above.
+
+ADAPTIVE BEHAVIOR:
+- If they nail a problem cleanly, the next one can probe a slightly different pattern (still ${difficultyLabel}).
+- If they struggle badly, keep the next problem approachable and encouraging.
+- Be warm, precise, and concrete — like a real interviewer who wants them to succeed.
+
+THIS SESSION'S PROBLEM PLAN (draw from these themes in roughly this order so each interview is different):
+${themeOrder.slice(0, targetProblems + 2).join(", ")}
+
+IMPORTANT-PROBLEM MARKER:
+- For the single hardest / most pivotal problem of the interview, begin that turn with the literal tag [KEY] immediately followed by the problem. Use it at most once. Never on a warm-up.
+
+PACING:
+- Duration: about ${duration} minutes. Aim to get through roughly ${targetProblems} problems.
+
+START NOW:
+Greet the candidate in ONE short sentence, then immediately present "Problem 1" using the PROBLEM FORMAT.
+
+INTERVIEW END:
+After about ${targetProblems} problems OR when time is nearly up, output EXACTLY this on its own line:
+[INTERVIEW_COMPLETE]
+Followed by one warm closing sentence.`;
+}
+
+/** Grades a finished DSA coding interview transcript. */
+export function buildDsaReportPrompt(
+  difficulty: DsaDifficulty,
+  language: CodeLanguage,
+  transcript: Message[],
+): string {
+  const transcriptText = transcript
+    .map(
+      (m, i) =>
+        `[${i}] ${m.role === "assistant" ? "INTERVIEWER" : "CANDIDATE"}: ${m.content}`,
+    )
+    .join("\n\n");
+
+  const languageLabel = getLanguage(language)?.label ?? language;
+  const difficultyLabel = getDifficulty(difficulty)?.label ?? difficulty;
+
+  return `You are a senior engineer writing the debrief for a ${difficultyLabel} DSA coding interview. The candidate solved problems in ${languageLabel}.
+
+TRANSCRIPT (interviewer problems + the candidate's submitted code):
+${transcriptText}
+
+OUTPUT FORMAT — Return ONLY this JSON object. No markdown. No backticks. No preamble.
+
+{
+  "overallScore": 78,
+  "scores": {
+    "technicalDepth": 82,
+    "communicationClarity": 74,
+    "problemSolving": 79
+  },
+  "verdict": "Two-sentence honest summary referencing specific problems and how their code did.",
+  "headline": "A 12-word-max magazine-style summary line.",
+  "questionBreakdown": [
+    {
+      "questionIndex": 0,
+      "question": "The problem title + one-line statement.",
+      "yourAnswer": "1-2 sentence summary of the candidate's actual code/approach and whether it was correct.",
+      "score": 8,
+      "feedback": "2-3 sentences: correctness, edge cases handled or missed, and the time/space complexity of their solution.",
+      "modelAnswer": "The optimal approach in 3-5 sentences, including its time and space complexity. Describe it — do not paste full code.",
+      "timestamp": 0
+    }
+  ],
+  "strengths": [
+    "Specific strength backed by a moment from the transcript (e.g. 'clean O(n) hash-map solution for Two Sum').",
+    "Another specific strength.",
+    "Another specific strength."
+  ],
+  "improvements": [
+    "Specific, concrete coding/DSA area to drill — not generic advice.",
+    "Another specific improvement.",
+    "Another specific improvement."
+  ],
+  "recommendedResources": [
+    { "title": "Resource name", "url": "https://example.com", "reason": "Why this helps this specific candidate." }
+  ],
+  "durationMinutes": 18
+}
+
+SCORING RUBRIC (interpret the three sub-scores for CODING):
+- technicalDepth = correctness + optimal complexity of the solutions.
+- communicationClarity = code readability, naming, and structure.
+- problemSolving = approach, edge-case handling, and how they recovered from hints.
+- 90-100: Exceptional. 75-89: Strong. 60-74: Promising. 40-59: Significant gaps. Below 40: Substantial prep needed.
+
+RULES:
+- Be honest but constructive. Reference SPECIFIC problems and what their code did — not platitudes.
+- Every problem the interviewer posed must appear in questionBreakdown.
+- Use real URLs where possible (leetcode.com, neetcode.io, etc.).
+
+Return only the JSON. Begin now.`;
 }
 
 /** Builds the prompt that grades a finished interview transcript. */

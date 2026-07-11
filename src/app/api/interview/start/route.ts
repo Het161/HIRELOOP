@@ -1,6 +1,10 @@
 import { getRole } from "@/lib/roles";
+import { getDifficulty, getLanguage, DSA_ROLE } from "@/lib/dsa";
 import { createSession, setTavusConversation } from "@/services/interview.service";
 import { createTavusConversation } from "@/services/tavus.service";
+import type {
+  CreateSessionInput,
+} from "@/services/interview.service";
 import type {
   InterviewMode,
   InterviewSession,
@@ -37,16 +41,7 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const role = getRole(body.roleId);
-  if (!role) {
-    return Response.json({ error: "Unknown roleId" }, { status: 400 });
-  }
-  if (!SENIORITIES.includes(body.seniority)) {
-    return Response.json({ error: "Invalid seniority" }, { status: 400 });
-  }
-  if (!MODES.includes(body.mode)) {
-    return Response.json({ error: "Invalid mode" }, { status: 400 });
-  }
+  const interviewType = body.interviewType === "dsa" ? "dsa" : "role";
 
   // Clamp the requested length to a sane 1–60 minute window; default 15.
   const durationMinutes = Math.round(body.durationMinutes);
@@ -55,14 +50,49 @@ export async function POST(req: Request): Promise<Response> {
       ? Math.min(60, Math.max(1, durationMinutes))
       : 15;
 
+  // Assemble + validate the session input, branching on interview type.
+  let input: CreateSessionInput;
+
+  if (interviewType === "dsa") {
+    if (!body.dsaDifficulty || !getDifficulty(body.dsaDifficulty)) {
+      return Response.json({ error: "Invalid dsaDifficulty" }, { status: 400 });
+    }
+    if (!body.language || !getLanguage(body.language)) {
+      return Response.json({ error: "Invalid language" }, { status: 400 });
+    }
+    input = {
+      // The virtual DSA role keeps the report/session plumbing happy.
+      roleId: DSA_ROLE.id,
+      seniority: "mid",
+      mode: "text",
+      durationMinutes: duration,
+      interviewType: "dsa",
+      dsaDifficulty: body.dsaDifficulty,
+      language: body.language,
+    };
+  } else {
+    const role = getRole(body.roleId);
+    if (!role || role.id === DSA_ROLE.id) {
+      return Response.json({ error: "Unknown roleId" }, { status: 400 });
+    }
+    if (!SENIORITIES.includes(body.seniority)) {
+      return Response.json({ error: "Invalid seniority" }, { status: 400 });
+    }
+    if (!MODES.includes(body.mode)) {
+      return Response.json({ error: "Invalid mode" }, { status: 400 });
+    }
+    input = {
+      roleId: body.roleId,
+      seniority: body.seniority,
+      mode: body.mode,
+      durationMinutes: duration,
+      interviewType: "role",
+    };
+  }
+
   let session: InterviewSession;
   try {
-    session = await createSession(
-      body.roleId,
-      body.seniority,
-      body.mode,
-      duration,
-    );
+    session = await createSession(input);
   } catch (err) {
     return Response.json(
       {
@@ -78,8 +108,11 @@ export async function POST(req: Request): Promise<Response> {
   // conversation calls (~30s combined) are skipped by default and the
   // voice flow starts instantly. Set ENABLE_TAVUS_VIDEO=true to re-enable
   // the photorealistic interviewer.
+  const tavusRole = getRole(session.roleId);
   if (
-    body.mode === "voice" &&
+    interviewType === "role" &&
+    session.mode === "voice" &&
+    tavusRole &&
     process.env.ENABLE_TAVUS_VIDEO === "true" &&
     process.env.TAVUS_API_KEY
   ) {
@@ -93,8 +126,8 @@ export async function POST(req: Request): Promise<Response> {
       // interview page picks it up on a later visit. The current visit lands
       // in the standard voice flow.
       createTavusConversation({
-        role,
-        seniority: body.seniority,
+        role: tavusRole,
+        seniority: session.seniority,
         customLlmUrl: `${baseUrl}/api/tavus-llm/${session.id}`,
       })
         .then((conversation) =>

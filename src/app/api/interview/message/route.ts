@@ -78,6 +78,13 @@ export async function POST(req: Request): Promise<Response> {
   // across retries but differs from every other session for the same role.
   const seed = hashSeed(sessionId);
   const durationMinutes = session.durationMinutes;
+  const streamOptions = {
+    seed,
+    durationMinutes,
+    interviewType: session.interviewType,
+    dsaDifficulty: session.dsaDifficulty,
+    language: session.language,
+  };
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream<Uint8Array>({
@@ -94,7 +101,7 @@ export async function POST(req: Request): Promise<Response> {
           role,
           seniority,
           messages,
-          { seed, durationMinutes },
+          streamOptions,
         )) {
           fullText += chunk;
           send({ chunk });
