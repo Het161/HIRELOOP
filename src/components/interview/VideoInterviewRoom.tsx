@@ -19,6 +19,7 @@ interface VideoInterviewRoomProps {
   roleId: string;
   seniority: Seniority;
   tavusUrl: string;
+  durationMinutes: number;
 }
 
 /** Normalize a caption for comparing growing partial transcripts. */
@@ -50,6 +51,7 @@ export default function VideoInterviewRoom({
   roleId,
   seniority,
   tavusUrl,
+  durationMinutes,
 }: VideoInterviewRoomProps) {
   const router = useRouter();
   const role = getRole(roleId);
@@ -59,7 +61,8 @@ export default function VideoInterviewRoom({
   const [showEndDialog, setShowEndDialog] = useState(false);
   const [endError, setEndError] = useState<string | null>(null);
   const [connError, setConnError] = useState<string | null>(null);
-  const [remaining, setRemaining] = useState(30 * 60);
+  const [remaining, setRemaining] = useState(durationMinutes * 60);
+  const endTriggeredRef = useRef(false);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
 
   const handleTranscript = useCallback((line: TranscriptLine) => {
@@ -85,9 +88,17 @@ export default function VideoInterviewRoom({
   }, [transcript]);
 
   async function endInterview() {
+    if (endTriggeredRef.current) return;
+    endTriggeredRef.current = true;
     setShowEndDialog(false);
     setEndError(null);
     setPhase("ending");
+
+    const fail = (msg: string) => {
+      endTriggeredRef.current = false;
+      setEndError(msg);
+      setPhase("live");
+    };
 
     let res: Response;
     try {
@@ -97,21 +108,18 @@ export default function VideoInterviewRoom({
         body: JSON.stringify({ sessionId }),
       });
     } catch {
-      setEndError("network error — could not generate report.");
-      setPhase("live");
+      fail("network error — could not generate report.");
       return;
     }
 
     if (!res.ok) {
-      setEndError("failed to generate report. please try again.");
-      setPhase("live");
+      fail("failed to generate report. please try again.");
       return;
     }
 
     const data = (await res.json()) as { reportId?: string; error?: string };
     if (!data.reportId) {
-      setEndError(data.error ?? "failed to generate report.");
-      setPhase("live");
+      fail(data.error ?? "failed to generate report.");
       return;
     }
 
@@ -163,7 +171,11 @@ export default function VideoInterviewRoom({
           ~/interview <span className="text-dim">·</span> session:{" "}
           <span className="text-paper">{sessionId.slice(0, 12)}</span>
         </div>
-        <Timer onTick={setRemaining} />
+        <Timer
+          durationMinutes={durationMinutes}
+          onTick={setRemaining}
+          onComplete={endInterview}
+        />
         <AsciiButton
           variant="danger"
           sound="danger"

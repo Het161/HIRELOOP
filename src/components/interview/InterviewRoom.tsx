@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SpeechService } from "@/services/speech.service";
-import { INTERVIEW_SECONDS, MAX_QUESTIONS } from "@/lib/interview.config";
+import { targetQuestionCount } from "@/lib/interview.config";
 import { getVoiceForSeniority } from "@/lib/voices";
+import { playInterviewCompleteCue, playKeyQuestionCue } from "@/lib/sounds";
 import TerminalWindow from "@/components/shared/TerminalWindow";
 import Prompt from "@/components/shared/Prompt";
 import AsciiButton from "@/components/shared/AsciiButton";
@@ -17,18 +18,24 @@ import VoiceInput from "./VoiceInput";
 import TextInput from "./TextInput";
 import Timer from "./Timer";
 import EndInterviewDialog from "./EndInterviewDialog";
+import KeyQuestionFlash from "./KeyQuestionFlash";
+import InterviewCompleteOverlay from "./InterviewCompleteOverlay";
 
 interface InterviewRoomProps {
   sessionId: string;
   mode: InterviewMode;
   roleId: string;
   seniority: Seniority;
+  durationMinutes: number;
 }
 
 type Phase = "loading" | "interviewer" | "awaiting-user" | "complete" | "ending";
 
+const KEY_MARKER = "[KEY]";
+
+/** Strip control markers the interviewer emits but the candidate never sees. */
 function strip(text: string): string {
-  return text.replaceAll("[INTERVIEW_COMPLETE]", "");
+  return text.replaceAll("[INTERVIEW_COMPLETE]", "").replaceAll(KEY_MARKER, "");
 }
 
 function clock(totalSeconds: number): string {
@@ -42,6 +49,7 @@ export default function InterviewRoom({
   mode,
   roleId,
   seniority,
+  durationMinutes,
 }: InterviewRoomProps) {
   const router = useRouter();
 
@@ -53,11 +61,15 @@ export default function InterviewRoom({
   const [endError, setEndError] = useState<string | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [audioBlocked, setAudioBlocked] = useState(false);
-  const [remaining, setRemaining] = useState(INTERVIEW_SECONDS);
+  const [remaining, setRemaining] = useState(durationMinutes * 60);
+  const [keyFlash, setKeyFlash] = useState(false);
+  const [timeUp, setTimeUp] = useState(false);
 
   const lastUserMessageRef = useRef<string>("");
   const speechRef = useRef<SpeechService | null>(null);
   const initCalledRef = useRef(false);
+  const keyFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const endTriggeredRef = useRef(false);
 
   const voiceName =
     mode === "voice" ? getVoiceForSeniority(seniority).name : undefined;
@@ -80,6 +92,7 @@ export default function InterviewRoom({
       service.stopListening();
       speechRef.current = null;
       setSpeech(null);
+      if (keyFlashTimer.current) clearTimeout(keyFlashTimer.current);
     };
   }, [mode, seniority]);
 
@@ -177,6 +190,7 @@ export default function InterviewRoom({
 
           if (event.done && event.fullText !== undefined) {
             const cleaned = strip(event.fullText);
+            const isKey = event.isKey === true;
             const finalMsg: Message = {
               role: "assistant",
               content: cleaned,
@@ -184,6 +198,17 @@ export default function InterviewRoom({
             };
             setMessages((prev) => [...prev, finalMsg]);
             setStreamingText("");
+
+            // Pivotal question → punch up the 3D flash badge + chime.
+            if (isKey) {
+              if (keyFlashTimer.current) clearTimeout(keyFlashTimer.current);
+              setKeyFlash(true);
+              playKeyQuestionCue();
+              keyFlashTimer.current = setTimeout(
+                () => setKeyFlash(false),
+                2400,
+              );
+            }
 
             if (event.isComplete) {
               setPhase("complete");
@@ -243,12 +268,32 @@ export default function InterviewRoom({
     if (unlocked) setAudioBlocked(false);
   }
 
+  /** Timer hit zero — celebrate, then auto-generate the report. */
+  const handleTimeUp = useCallback(() => {
+    if (endTriggeredRef.current) return;
+    setKeyFlash(false);
+    setTimeUp(true);
+    playInterviewCompleteCue();
+    void endInterview();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function endInterview() {
+    if (endTriggeredRef.current) return;
+    endTriggeredRef.current = true;
     setShowEndDialog(false);
     setEndError(null);
     setPhase("ending");
     speechRef.current?.cancelSpeak();
     speechRef.current?.stopListening();
+
+    // Let the user try again if grading fails.
+    const fail = (msg: string) => {
+      endTriggeredRef.current = false;
+      setTimeUp(false);
+      setEndError(msg);
+      setPhase("complete");
+    };
 
     let res: Response;
     try {
@@ -258,21 +303,18 @@ export default function InterviewRoom({
         body: JSON.stringify({ sessionId }),
       });
     } catch {
-      setEndError("network error — could not generate report.");
-      setPhase("complete");
+      fail("network error — could not generate report.");
       return;
     }
 
     if (!res.ok) {
-      setEndError("failed to generate report. please try again.");
-      setPhase("complete");
+      fail("failed to generate report. please try again.");
       return;
     }
 
     const data = (await res.json()) as { reportId?: string; error?: string };
     if (!data.reportId) {
-      setEndError(data.error ?? "failed to generate report.");
-      setPhase("complete");
+      fail(data.error ?? "failed to generate report.");
       return;
     }
 
@@ -282,6 +324,7 @@ export default function InterviewRoom({
   /* ---- derived ---- */
   const thinking = phase === "loading";
   const speaking = isSpeaking || phase === "interviewer";
+  const targetQuestions = targetQuestionCount(durationMinutes);
   const questionNum = messages.filter((m) => m.role === "assistant").length;
   const lastAssistant = [...messages]
     .reverse()
@@ -293,6 +336,9 @@ export default function InterviewRoom({
       : "warming up the interviewer…";
 
   /* ---- ending overlay ---- */
+  if (phase === "ending" && timeUp) {
+    return <InterviewCompleteOverlay />;
+  }
   if (phase === "ending") {
     return (
       <div className="flex min-h-[calc(100vh-65px)] items-center justify-center bg-bg px-6">
@@ -322,6 +368,8 @@ export default function InterviewRoom({
 
   return (
     <div className="flex min-h-[calc(100vh-65px)] flex-col bg-bg">
+      {keyFlash && <KeyQuestionFlash />}
+
       <EndInterviewDialog
         open={showEndDialog}
         onConfirm={endInterview}
@@ -350,7 +398,11 @@ export default function InterviewRoom({
             <span className="text-paper">{sessionId.slice(0, 12)}</span>
           </span>
         </div>
-        <Timer onTick={setRemaining} />
+        <Timer
+          durationMinutes={durationMinutes}
+          onTick={setRemaining}
+          onComplete={handleTimeUp}
+        />
         <AsciiButton
           variant="danger"
           sound="danger"
@@ -419,7 +471,10 @@ export default function InterviewRoom({
             transcript
           </Prompt>
 
-          <TranscriptView messages={messages} streamingText={streamingText} />
+          <TranscriptView
+            messages={messages}
+            streamingText={strip(streamingText)}
+          />
 
           {phase !== "complete" && (
             <div className="mt-5">
@@ -448,7 +503,7 @@ export default function InterviewRoom({
             <span className="text-dim">❯ session:</span> {sessionId.slice(0, 8)}
             <span className="px-2 text-dim">·</span>role: {roleId || "—"}
             <span className="px-2 text-dim">·</span>question{" "}
-            {Math.max(1, questionNum)}/{MAX_QUESTIONS}
+            {Math.max(1, questionNum)}/{targetQuestions}
             <span className="px-2 text-dim">·</span>mode: {mode}
           </>
         }

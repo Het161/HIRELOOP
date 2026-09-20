@@ -1,4 +1,5 @@
 import type { Role, RoleCategory } from "@/types";
+import { DSA_ROLE } from "@/lib/dsa";
 
 /* ============================================================ *
  * Role catalog — every interviewable role HireLoop supports.
@@ -390,8 +391,9 @@ export const CATEGORY_LABELS: Record<RoleCategory, string> = {
   specialized: "Specialized",
 };
 
-/** Look up a role by its id. */
+/** Look up a role by its id (including the virtual DSA role). */
 export function getRole(id: string): Role | undefined {
+  if (id === DSA_ROLE.id) return DSA_ROLE;
   return ROLES.find((role) => role.id === id);
 }
 

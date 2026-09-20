@@ -272,6 +272,54 @@ function playSample(variant: SoundVariant, volume: number): boolean {
   return true;
 }
 
+/* ------------------- musical announcement cues ------------------- */
+
+/** One sustained, slightly bell-like tone for the arpeggios below. */
+function playTone(
+  audio: AudioContext,
+  freq: number,
+  start: number,
+  duration: number,
+  peak: number,
+): void {
+  const osc = audio.createOscillator();
+  osc.type = "triangle";
+  osc.frequency.setValueAtTime(freq, start);
+
+  const gain = audio.createGain();
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.exponentialRampToValueAtTime(peak, start + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+
+  osc.connect(gain).connect(audio.destination);
+  osc.start(start);
+  osc.stop(start + duration + 0.02);
+}
+
+/** Play an ascending sequence of notes (Hz) as a short fanfare. */
+function playArpeggio(notes: number[], step: number, peak: number): void {
+  if (typeof window === "undefined" || mutedCache) return;
+  const audio = getContext();
+  if (!audio) return;
+  if (audio.state === "suspended") audio.resume().catch(() => {});
+  const now = audio.currentTime + 0.01;
+  notes.forEach((freq, i) => {
+    playTone(audio, freq, now + i * step, step * 2.4, peak);
+  });
+}
+
+/** Bright 3-note rising sting — fires when a KEY question appears. */
+export function playKeyQuestionCue(): void {
+  // E5 · G#5 · B5 — a major triad, "pay attention".
+  playArpeggio([659.25, 830.61, 987.77], 0.085, 0.16);
+}
+
+/** Triumphant 5-note fanfare — fires when the interview completes. */
+export function playInterviewCompleteCue(): void {
+  // C5 · E5 · G5 · C6 · G5 — a little victory flourish.
+  playArpeggio([523.25, 659.25, 783.99, 1046.5, 783.99], 0.13, 0.18);
+}
+
 /* ------------------------ mute store ------------------------ */
 
 const MUTE_KEY = "hireloop_sound_muted";

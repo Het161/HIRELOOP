@@ -64,6 +64,11 @@ export async function POST(req: Request): Promise<Response> {
       role,
       session.seniority,
       session.messages,
+      {
+        interviewType: session.interviewType,
+        dsaDifficulty: session.dsaDifficulty,
+        language: session.language,
+      },
     );
 
     const report: InterviewReport = {

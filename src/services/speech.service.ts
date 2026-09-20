@@ -200,7 +200,12 @@ export class SpeechService {
    * only the first sentence costs any latency.
    */
   speakSentence(sentence: string): void {
-    const clean = sentence.replace(/\[INTERVIEW_COMPLETE\]/g, "").trim();
+    // The server already strips control markers, but a sentence can also
+    // arrive here from `speak()`; never read a marker aloud.
+    const clean = sentence
+      .replace(/\[INTERVIEW_COMPLETE\]/g, "")
+      .replace(/\[KEY\]/g, "")
+      .trim();
     if (!clean) return;
 
     const audio = new Audio(this.ttsUrl(clean));

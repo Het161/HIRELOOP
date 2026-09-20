@@ -1,9 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { INTERVIEW_SECONDS } from "@/lib/interview.config";
-
-const TOTAL_SECONDS = INTERVIEW_SECONDS;
 
 function formatTime(secs: number): string {
   const m = Math.floor(secs / 60);
@@ -12,26 +9,43 @@ function formatTime(secs: number): string {
 }
 
 interface TimerProps {
+  /** Total interview length in minutes. */
+  durationMinutes?: number;
   onTick?: (remaining: number) => void;
+  /** Fired exactly once when the countdown reaches zero. */
+  onComplete?: () => void;
 }
 
-export default function Timer({ onTick }: TimerProps) {
-  const [remaining, setRemaining] = useState(TOTAL_SECONDS);
+export default function Timer({
+  durationMinutes = 30,
+  onTick,
+  onComplete,
+}: TimerProps) {
+  const total = Math.max(1, Math.round(durationMinutes)) * 60;
+  const [remaining, setRemaining] = useState(total);
+  const firedRef = useRef(false);
 
-  // Keep the latest callback without restarting the interval.
+  // Keep the latest callbacks without restarting the interval.
   const onTickRef = useRef(onTick);
   onTickRef.current = onTick;
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
 
   useEffect(() => {
     // Count down against a fixed deadline rather than by decrementing —
     // a per-second interval drifts, and drifts badly once the tab is
     // backgrounded, which a 30-minute interview would show.
-    const endsAt = Date.now() + TOTAL_SECONDS * 1000;
+    firedRef.current = false;
+    const endsAt = Date.now() + total * 1000;
 
     const tick = () => {
       const next = Math.max(0, Math.round((endsAt - Date.now()) / 1000));
       setRemaining(next);
       onTickRef.current?.(next);
+      if (next <= 0 && !firedRef.current) {
+        firedRef.current = true;
+        onCompleteRef.current?.();
+      }
       return next;
     };
 
@@ -39,9 +53,9 @@ export default function Timer({ onTick }: TimerProps) {
       if (tick() <= 0) clearInterval(id);
     }, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [total]);
 
-  const isLow = remaining < 5 * 60;
+  const isLow = remaining < 60 || remaining < total * 0.15;
 
   return (
     <span

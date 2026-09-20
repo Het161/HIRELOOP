@@ -1,6 +1,10 @@
 import { getRole } from "@/lib/roles";
-import { MAX_QUESTIONS, MIN_QUESTIONS } from "@/lib/interview.config";
+import {
+  maxQuestionCount,
+  minQuestionCount,
+} from "@/lib/interview.config";
 import { SentenceSplitter, splitSentences } from "@/lib/sentences";
+import { hashSeed } from "@/lib/utils";
 import { streamInterviewerResponse } from "@/services/ai.service";
 import {
   appendMessage,
@@ -14,6 +18,13 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const COMPLETE_MARKER = "[INTERVIEW_COMPLETE]";
+/** Tags a pivotal question so the room can flash a badge. Never spoken. */
+const KEY_MARKER = "[KEY]";
+
+/** Strip every control marker from text that is about to be read aloud. */
+function speakable(text: string): string {
+  return text.replaceAll(COMPLETE_MARKER, "").replaceAll(KEY_MARKER, "").trim();
+}
 
 /**
  * Cut a turn after its first question. Mirrors what was actually sent to
@@ -21,7 +32,7 @@ const COMPLETE_MARKER = "[INTERVIEW_COMPLETE]";
  */
 function trimAfterFirstQuestion(text: string): string {
   const out: string[] = [];
-  for (const sentence of splitSentences(text.replaceAll(COMPLETE_MARKER, ""))) {
+  for (const sentence of splitSentences(text)) {
     out.push(sentence);
     if (/\?["'’”)\]]*$/.test(sentence.trim())) break;
   }
@@ -91,6 +102,17 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const { seniority, messages } = session;
+  // Stable per-session seed → this interview's question plan stays consistent
+  // across retries but differs from every other session for the same role.
+  const seed = hashSeed(sessionId);
+  const durationMinutes = session.durationMinutes;
+  const streamOptions = {
+    seed,
+    durationMinutes,
+    interviewType: session.interviewType,
+    dsaDifficulty: session.dsaDifficulty,
+    language: session.language,
+  };
   const encoder = new TextEncoder();
 
   // How many questions have been asked, counting the one about to be
@@ -99,7 +121,8 @@ export async function POST(req: Request): Promise<Response> {
   // when a candidate gives short answers.
   const questionNumber =
     messages.filter((m) => m.role === "assistant").length + 1;
-  const isFinalTurn = questionNumber >= MAX_QUESTIONS;
+  const minQuestions = minQuestionCount(durationMinutes);
+  const isFinalTurn = questionNumber >= maxQuestionCount(durationMinutes);
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -116,7 +139,7 @@ export async function POST(req: Request): Promise<Response> {
 
         /** Forward a finished sentence, unless the turn is already done. */
         const emitSentence = (sentence: string): boolean => {
-          const spoken = sentence.replaceAll(COMPLETE_MARKER, "").trim();
+          const spoken = speakable(sentence);
           if (spoken) send({ speak: spoken });
           // One question per turn: the model sometimes strings three
           // together, which would bury the candidate.
@@ -131,7 +154,7 @@ export async function POST(req: Request): Promise<Response> {
           role,
           seniority,
           messages,
-          isFinalTurn,
+          { ...streamOptions, finalTurn: isFinalTurn },
         )) {
           fullText += chunk;
           send({ chunk });
@@ -161,14 +184,17 @@ export async function POST(req: Request): Promise<Response> {
         // the final turn whether or not the marker was emitted.
         const markedComplete = fullText.includes(COMPLETE_MARKER);
         const isComplete =
-          (markedComplete && questionNumber >= MIN_QUESTIONS) || isFinalTurn;
+          (markedComplete && questionNumber >= minQuestions) || isFinalTurn;
 
-        // The marker is a control token, not speech — never store it.
-        const content = fullText.replaceAll(COMPLETE_MARKER, "").trim();
+        // Markers are control tokens, not speech. They are reported as
+        // flags so they never reach the transcript, the TTS, or the
+        // history replayed back to the model on the next turn.
+        const isKey = fullText.includes(KEY_MARKER);
+        const content = speakable(fullText);
 
         // Tell the client first — it has everything it needs to finish
         // speaking and reopen the mic — then persist.
-        send({ done: true, fullText: content, isComplete });
+        send({ done: true, fullText: content, isComplete, isKey });
 
         await appendMessage(sessionId, {
           role: "assistant",

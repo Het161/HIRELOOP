@@ -1,6 +1,9 @@
 import mongoose, { Schema, type Model } from "mongoose";
 import type {
+  CodeLanguage,
+  DsaDifficulty,
   InterviewMode,
+  InterviewType,
   Message,
   QuestionBreakdown,
   RecommendedResource,
@@ -79,6 +82,10 @@ export interface SessionDoc {
   roleId: string;
   seniority: Seniority;
   mode: InterviewMode;
+  interviewType: InterviewType;
+  dsaDifficulty?: DsaDifficulty;
+  language?: CodeLanguage;
+  durationMinutes: number;
   messages: Message[];
   startedAt: Date;
   endedAt: Date | null;
@@ -108,6 +115,21 @@ const SessionSchema = new Schema<SessionDoc>(
       required: true,
     },
     mode: { type: String, enum: ["voice", "text"], required: true },
+    interviewType: {
+      type: String,
+      enum: ["role", "dsa"],
+      required: true,
+      default: "role",
+    },
+    dsaDifficulty: {
+      type: String,
+      enum: ["very-easy", "easy", "medium", "hard"],
+    },
+    language: {
+      type: String,
+      enum: ["python", "javascript", "typescript", "java", "cpp", "go"],
+    },
+    durationMinutes: { type: Number, required: true, default: 30 },
     messages: { type: [MessageSchema], default: [] },
     startedAt: { type: Date, required: true, default: Date.now },
     endedAt: { type: Date, default: null },

@@ -1,8 +1,16 @@
 import Groq from "groq-sdk";
-import { buildInterviewerSystemPrompt, buildReportPrompt } from "@/lib/prompts";
+import {
+  buildDsaInterviewerSystemPrompt,
+  buildDsaReportPrompt,
+  buildInterviewerSystemPrompt,
+  buildReportPrompt,
+} from "@/lib/prompts";
 import { clamp } from "@/lib/utils";
 import type {
+  CodeLanguage,
+  DsaDifficulty,
   InterviewReport,
+  InterviewType,
   Message,
   QuestionBreakdown,
   RecommendedResource,
@@ -16,27 +24,43 @@ import type {
  * ============================================================ */
 
 /**
- * Active Groq model. `openai/gpt-oss-120b` returns a complete interviewer
- * turn in ~450ms and grades a full transcript in ~5s.
+ * Active Groq model for report grading — quality over latency. Grades a
+ * full transcript in ~5s.
  *
- * NOTE: the previous default (`llama-3.3-70b-versatile`) was retired by
- * Groq and now 404s — every question and every report failed. Verify a
- * model is still live with `GET /openai/v1/models` before switching.
+ * NOTE: `llama-3.3-70b-versatile` and `llama-3.1-8b-instant` were both
+ * retired by Groq and now 404, which broke every question and every
+ * report. Verify a model is still live with `GET /openai/v1/models`
+ * before switching, and check `/api/health`, which fails loudly when the
+ * configured id is missing.
  */
 export const GROQ_MODEL =
   process.env.GROQ_MODEL?.trim() || "openai/gpt-oss-120b";
 
 /**
- * Models tried in order when the primary is unavailable (404 from a
- * retirement, 429 rate limit, or a 5xx). Keeps a live demo running even
- * if the primary model disappears mid-session.
+ * Live interviewer turns: a reply is only 1-3 spoken sentences, so this
+ * is tuned for time-to-first-token rather than depth. Kept separate from
+ * the grading model so the two can be traded off independently.
  */
-const FALLBACK_MODELS = [
-  GROQ_MODEL,
-  "openai/gpt-oss-20b",
-  "qwen/qwen3.8-27b",
-  "groq/compound-mini",
-].filter((m, i, all) => all.indexOf(m) === i);
+export const GROQ_INTERVIEWER_MODEL =
+  process.env.GROQ_INTERVIEWER_MODEL?.trim() || "openai/gpt-oss-120b";
+
+/**
+ * Models tried in order when the primary is unavailable (404 from a
+ * retirement, 429 rate limit, or a 5xx). Rate limits are per model, so
+ * failing over also routes around a exhausted token budget.
+ */
+function chainFrom(primary: string): string[] {
+  return [
+    primary,
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
+    "qwen/qwen3.8-27b",
+    "groq/compound-mini",
+  ].filter((m, i, all) => all.indexOf(m) === i);
+}
+
+const INTERVIEWER_MODELS = chainFrom(GROQ_INTERVIEWER_MODEL);
+const REPORT_MODELS = chainFrom(GROQ_MODEL);
 
 const INTERVIEWER_MAX_TOKENS = 400; // a turn is 1-3 spoken sentences
 const REPORT_MAX_TOKENS = 6000;
@@ -135,9 +159,26 @@ export async function* streamInterviewerResponse(
   role: Role,
   seniority: Seniority,
   messages: Message[],
-  finalTurn = false,
+  options: {
+    seed?: number;
+    durationMinutes?: number;
+    keyMarker?: boolean;
+    interviewType?: InterviewType;
+    dsaDifficulty?: DsaDifficulty;
+    language?: CodeLanguage;
+    /** Closing turn: wrap up instead of asking again. */
+    finalTurn?: boolean;
+  } = {},
 ): AsyncGenerator<string, void, unknown> {
-  const systemPrompt = buildInterviewerSystemPrompt(role, seniority, finalTurn);
+  const systemPrompt =
+    options.interviewType === "dsa" && options.dsaDifficulty && options.language
+      ? buildDsaInterviewerSystemPrompt({
+          difficulty: options.dsaDifficulty,
+          language: options.language,
+          seed: options.seed,
+          durationMinutes: options.durationMinutes,
+        })
+      : buildInterviewerSystemPrompt(role, seniority, options);
 
   // Convert internal Message[] to Groq's OpenAI-style format.
   const convo = messages.map((m) => ({
@@ -157,7 +198,7 @@ export async function* streamInterviewerResponse(
   // On the closing turn the instruction goes *after* the transcript.
   // Placed in the system prompt it competes with "ask 8-12 questions"
   // and loses; last position wins, and the model closes cleanly.
-  const closingInstruction = finalTurn
+  const closingInstruction = options.finalTurn
     ? [
         {
           role: "system" as const,
@@ -173,14 +214,15 @@ export async function* streamInterviewerResponse(
       ...trimHistory(convo),
       ...closingInstruction,
     ],
-    temperature: 0.7,
+    // 0.85 keeps questions varied between attempts at the same role.
+    temperature: 0.85,
     max_tokens: INTERVIEWER_MAX_TOKENS,
     stream: true as const,
   };
 
   let lastError: unknown = null;
 
-  for (const model of FALLBACK_MODELS) {
+  for (const model of INTERVIEWER_MODELS) {
     let emitted = false;
     try {
       const stream = await getGroq().chat.completions.create({
@@ -337,7 +379,17 @@ export async function generateReport(
   role: Role,
   seniority: Seniority,
   transcript: Message[],
+  opts: {
+    interviewType?: InterviewType;
+    dsaDifficulty?: DsaDifficulty;
+    language?: CodeLanguage;
+  } = {},
 ): Promise<Omit<InterviewReport, "_id" | "sessionId" | "generatedAt">> {
+  const userPrompt =
+    opts.interviewType === "dsa" && opts.dsaDifficulty && opts.language
+      ? buildDsaReportPrompt(opts.dsaDifficulty, opts.language, transcript)
+      : buildReportPrompt(role, seniority, transcript);
+
   const messages = [
     {
       role: "system" as const,
@@ -346,13 +398,13 @@ export async function generateReport(
     },
     {
       role: "user" as const,
-      content: buildReportPrompt(role, seniority, transcript),
+      content: userPrompt,
     },
   ];
 
   let lastError: unknown = null;
 
-  for (const model of FALLBACK_MODELS) {
+  for (const model of REPORT_MODELS) {
     try {
       const response = await getGroq().chat.completions.create({
         model,

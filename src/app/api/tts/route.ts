@@ -57,6 +57,9 @@ async function synthesize(input: SynthesisInput): Promise<Response> {
             emotion: input.emotion,
           },
         },
+        // Clear, full-quality speech. Latency is handled on the client by
+        // streaming these bytes into playback as they arrive (MediaSource),
+        // so we no longer need to trade audio quality for a faster start.
         output_format: {
           container: "mp3",
           bit_rate: 128000,

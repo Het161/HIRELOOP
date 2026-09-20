@@ -265,10 +265,114 @@ body {
   }
 }
 
+/* ============================================================ *
+ * KEY-question flash — a 3D badge that punches in when the
+ * interviewer asks one of the pivotal questions.
+ * ============================================================ */
+.key-flash {
+  perspective: 900px;
+}
+.key-flash-badge {
+  transform-style: preserve-3d;
+  animation: keyflash 2.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes keyflash {
+  0% {
+    opacity: 0;
+    transform: rotateX(-80deg) scale(0.4);
+    filter: blur(6px);
+  }
+  18% {
+    opacity: 1;
+    transform: rotateX(0deg) scale(1.12);
+    filter: blur(0);
+  }
+  30% {
+    transform: rotateX(0deg) scale(1);
+  }
+  78% {
+    opacity: 1;
+    transform: rotateX(0deg) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: rotateX(20deg) scale(0.92);
+  }
+}
+.key-glow {
+  animation: keyglow 1.1s ease-in-out infinite alternate;
+}
+@keyframes keyglow {
+  from {
+    text-shadow: 0 0 4px var(--accent2), 0 0 12px rgba(217, 119, 87, 0.4);
+  }
+  to {
+    text-shadow: 0 0 10px var(--accent2), 0 0 26px rgba(217, 119, 87, 0.75);
+  }
+}
+
+/* ============================================================ *
+ * Interview-complete burst — celebratory 3D reveal shown when
+ * the timer runs out before the report is generated.
+ * ============================================================ */
+.complete-stage {
+  perspective: 1100px;
+}
+.complete-badge {
+  transform-style: preserve-3d;
+  animation: completein 1s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes completein {
+  0% {
+    opacity: 0;
+    transform: rotateX(-70deg) rotateZ(-6deg) scale(0.5);
+    filter: blur(8px);
+  }
+  60% {
+    opacity: 1;
+    transform: rotateX(0deg) rotateZ(0deg) scale(1.06);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 1;
+    transform: rotateX(0deg) rotateZ(0deg) scale(1);
+  }
+}
+.complete-spin {
+  display: inline-block;
+  animation: completespin 2.4s linear infinite;
+}
+@keyframes completespin {
+  from {
+    transform: rotateY(0deg);
+  }
+  to {
+    transform: rotateY(360deg);
+  }
+}
+.complete-ring {
+  animation: completering 1.6s ease-out infinite;
+}
+@keyframes completering {
+  0% {
+    opacity: 0.7;
+    transform: scale(0.6);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.5);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .cursor,
   .pulse-dot,
-  .dot-flash {
+  .dot-flash,
+  .key-flash-badge,
+  .key-glow,
+  .complete-badge,
+  .complete-spin,
+  .complete-ring {
     animation: none;
   }
   .reveal {

@@ -2,7 +2,7 @@ import { connectDB, isDbConfigured } from "@/lib/mongodb";
 import { GROQ_MODEL } from "@/services/ai.service";
 import { CARTESIA_MODEL, getVoiceForSeniority } from "@/lib/voices";
 import { isDegraded } from "@/lib/memory-store";
-import { MAX_QUESTIONS } from "@/lib/interview.config";
+import { maxQuestionCount, DEFAULT_DURATION_MINUTES } from "@/lib/interview.config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -163,7 +163,7 @@ export async function GET(): Promise<Response> {
       }
       if (lastTokenLimit <= 10_000) {
         throw new Error(
-          `this key allows only ${lastTokenLimit} tokens/minute (free tier). A full ${MAX_QUESTIONS}-question ` +
+          `this key allows only ${lastTokenLimit} tokens/minute (free tier). A full ${maxQuestionCount(DEFAULT_DURATION_MINUTES)}-question ` +
             "interview plus its report needs roughly 20k, so late turns will hit 429s and fall back to a " +
             "smaller model. Upgrade the Groq plan before presenting, or keep the demo interview short.",
         );
