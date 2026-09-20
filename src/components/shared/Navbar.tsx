@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { toast } from "@/components/shared/Toast";
 import MuteToggle from "@/components/shared/MuteToggle";
+import Wordmark from "@/components/shared/Wordmark";
 import { playClick } from "@/lib/sounds";
 
 /* ============================================================ *
@@ -30,6 +31,16 @@ export default function Navbar() {
   return (
     <header className="fixed left-0 right-0 top-0 z-50 h-[37px] border-b border-border bg-surface">
       <div className="flex h-full items-stretch overflow-x-auto text-[12.5px]">
+        {/* Brand mark — home link, ahead of the tab strip. */}
+        <Link
+          href="/"
+          onClick={() => playClick("nav")}
+          aria-label="hireloop — home"
+          className="flex h-full flex-none items-center border-r border-border px-3 transition-colors hover:bg-surface2"
+        >
+          <Wordmark variant="mark" size="md" priority />
+        </Link>
+
         {TABS.map((tab) => {
           const active = tab.match(pathname);
           const body = (

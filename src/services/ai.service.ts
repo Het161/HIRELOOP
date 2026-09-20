@@ -11,16 +11,35 @@ import type {
 } from "@/types";
 
 /* ============================================================ *
- * Groq (Llama 3.3) integration — the interviewer brain + report
- * grader. Every LLM call in HireLoop goes through this module.
+ * Groq integration — the interviewer brain + report grader.
+ * Every LLM call in HireLoop goes through this module.
  * ============================================================ */
 
-/** Active Groq model. Swap here to change the LLM. */
-export const GROQ_MODEL = "llama-3.3-70b-versatile";
-// Alternatives if needed: "llama-3.1-8b-instant" (faster), "openai/gpt-oss-120b"
+/**
+ * Active Groq model. `openai/gpt-oss-120b` returns a complete interviewer
+ * turn in ~450ms and grades a full transcript in ~5s.
+ *
+ * NOTE: the previous default (`llama-3.3-70b-versatile`) was retired by
+ * Groq and now 404s — every question and every report failed. Verify a
+ * model is still live with `GET /openai/v1/models` before switching.
+ */
+export const GROQ_MODEL =
+  process.env.GROQ_MODEL?.trim() || "openai/gpt-oss-120b";
 
-const INTERVIEWER_MAX_TOKENS = 1024;
-const REPORT_MAX_TOKENS = 4096;
+/**
+ * Models tried in order when the primary is unavailable (404 from a
+ * retirement, 429 rate limit, or a 5xx). Keeps a live demo running even
+ * if the primary model disappears mid-session.
+ */
+const FALLBACK_MODELS = [
+  GROQ_MODEL,
+  "openai/gpt-oss-20b",
+  "qwen/qwen3.8-27b",
+  "groq/compound-mini",
+].filter((m, i, all) => all.indexOf(m) === i);
+
+const INTERVIEWER_MAX_TOKENS = 400; // a turn is 1-3 spoken sentences
+const REPORT_MAX_TOKENS = 6000;
 
 /** Lazily-constructed, cached Groq client (never crashes at import time). */
 let groqClient: Groq | null = null;
@@ -32,14 +51,81 @@ function getGroq(): Groq {
         "GROQ_API_KEY is not defined — add it to .env.local (see .env.local.example).",
       );
     }
-    groqClient = new Groq({ apiKey });
+    groqClient = new Groq({
+      apiKey,
+      // No SDK-level retries: on a 429 the SDK waits out `Retry-After`,
+      // which showed up as 4-9s stalls mid-interview. Rate limits are
+      // per model, so failing straight over to the next model in
+      // FALLBACK_MODELS is both faster and more likely to succeed.
+      maxRetries: 0,
+      timeout: 30_000,
+    });
   }
   return groqClient;
+}
+
+/**
+ * Per-model tuning. The gpt-oss and Qwen models emit hidden reasoning
+ * tokens before their first visible token; asking one spoken interview
+ * question needs none of that, and `low` cuts time-to-first-token by
+ * ~85ms. `groq/compound-mini` rejects the parameter outright, so it is
+ * only sent to models that accept it.
+ */
+function speedOptions(model: string): { reasoning_effort?: "low" } {
+  const supportsReasoningEffort =
+    model.startsWith("openai/gpt-oss") || model.startsWith("qwen/");
+  return supportsReasoningEffort ? { reasoning_effort: "low" } : {};
+}
+
+/** True for errors worth retrying on the next model in the chain. */
+function isRetriable(err: unknown): boolean {
+  const status = (err as { status?: number })?.status;
+  if (typeof status === "number") {
+    return status === 404 || status === 429 || status >= 500;
+  }
+  return true; // network/timeout — worth one more try
 }
 
 /* ============================================================ *
  * Streaming interviewer turns.
  * ============================================================ */
+
+/** Recent messages kept verbatim (4 question/answer pairs). */
+const RECENT_MESSAGES = 8;
+
+type ChatMessage = { role: "assistant" | "user"; content: string };
+
+/**
+ * Bound the size of each request.
+ *
+ * Replaying the whole transcript every turn makes later turns several
+ * times more expensive than early ones — on Groq's free tier (8k tokens
+ * per minute) that is what pushes a long interview into 429s and
+ * multi-second stalls. Recent turns are kept verbatim so follow-ups stay
+ * coherent, while older ones collapse into a list of topics already
+ * covered, which is all the interviewer needs to avoid repeating itself.
+ */
+function trimHistory(messages: ChatMessage[]): ChatMessage[] {
+  if (messages.length <= RECENT_MESSAGES) return messages;
+
+  const older = messages.slice(0, -RECENT_MESSAGES);
+  const recent = messages.slice(-RECENT_MESSAGES);
+
+  const askedEarlier = older
+    .filter((m) => m.role === "assistant")
+    .map((m, i) => `${i + 1}. ${m.content.split(/(?<=[.!?])\s/)[0]}`)
+    .join("\n");
+
+  if (!askedEarlier) return recent;
+
+  return [
+    {
+      role: "user",
+      content: `[Context: earlier in this interview you already asked these questions — do not repeat them:\n${askedEarlier}\n\nThe most recent exchanges follow.]`,
+    },
+    ...recent,
+  ];
+}
 
 /**
  * Stream the AI interviewer's next response. Yields text chunks as they
@@ -49,8 +135,9 @@ export async function* streamInterviewerResponse(
   role: Role,
   seniority: Seniority,
   messages: Message[],
+  finalTurn = false,
 ): AsyncGenerator<string, void, unknown> {
-  const systemPrompt = buildInterviewerSystemPrompt(role, seniority);
+  const systemPrompt = buildInterviewerSystemPrompt(role, seniority, finalTurn);
 
   // Convert internal Message[] to Groq's OpenAI-style format.
   const convo = messages.map((m) => ({
@@ -67,18 +154,63 @@ export async function* streamInterviewerResponse(
     });
   }
 
-  const stream = await getGroq().chat.completions.create({
-    model: GROQ_MODEL,
-    messages: [{ role: "system" as const, content: systemPrompt }, ...convo],
+  // On the closing turn the instruction goes *after* the transcript.
+  // Placed in the system prompt it competes with "ask 8-12 questions"
+  // and loses; last position wins, and the model closes cleanly.
+  const closingInstruction = finalTurn
+    ? [
+        {
+          role: "system" as const,
+          content:
+            "The interview is now over. Do NOT ask another question of any kind. Reply with exactly one warm sentence thanking the candidate for their time, and nothing else.",
+        },
+      ]
+    : [];
+
+  const payload = {
+    messages: [
+      { role: "system" as const, content: systemPrompt },
+      ...trimHistory(convo),
+      ...closingInstruction,
+    ],
     temperature: 0.7,
     max_tokens: INTERVIEWER_MAX_TOKENS,
-    stream: true,
-  });
+    stream: true as const,
+  };
 
-  for await (const chunk of stream) {
-    const content = chunk.choices[0]?.delta?.content;
-    if (content) yield content;
+  let lastError: unknown = null;
+
+  for (const model of FALLBACK_MODELS) {
+    let emitted = false;
+    try {
+      const stream = await getGroq().chat.completions.create({
+        model,
+        ...speedOptions(model),
+        ...payload,
+      });
+
+      for await (const chunk of stream) {
+        const content = chunk.choices[0]?.delta?.content;
+        if (content) {
+          emitted = true;
+          yield content;
+        }
+      }
+      return; // turn delivered
+    } catch (err) {
+      lastError = err;
+      // Once text has reached the candidate we cannot restart cleanly —
+      // a second model would repeat the half-spoken question.
+      if (emitted || !isRetriable(err)) throw err;
+      console.warn(
+        `Groq model "${model}" failed (${(err as Error)?.message}) — trying the next one.`,
+      );
+    }
   }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("All Groq models failed to produce an interviewer turn");
 }
 
 /* ============================================================ *
@@ -206,23 +338,121 @@ export async function generateReport(
   seniority: Seniority,
   transcript: Message[],
 ): Promise<Omit<InterviewReport, "_id" | "sessionId" | "generatedAt">> {
-  const response = await getGroq().chat.completions.create({
-    model: GROQ_MODEL,
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are a senior engineering manager. You ALWAYS respond with valid JSON only — no markdown, no backticks, no preamble, no explanation. Just the raw JSON object.",
-      },
-      { role: "user", content: buildReportPrompt(role, seniority, transcript) },
-    ],
-    temperature: 0.4,
-    max_tokens: REPORT_MAX_TOKENS,
-    response_format: { type: "json_object" },
+  const messages = [
+    {
+      role: "system" as const,
+      content:
+        "You are a senior engineering manager. You ALWAYS respond with valid JSON only — no markdown, no backticks, no preamble, no explanation. Just the raw JSON object.",
+    },
+    {
+      role: "user" as const,
+      content: buildReportPrompt(role, seniority, transcript),
+    },
+  ];
+
+  let lastError: unknown = null;
+
+  for (const model of FALLBACK_MODELS) {
+    try {
+      const response = await getGroq().chat.completions.create({
+        model,
+        messages,
+        temperature: 0.4,
+        max_tokens: REPORT_MAX_TOKENS,
+        response_format: { type: "json_object" },
+      });
+
+      const raw = response.choices[0]?.message?.content;
+      if (!raw) throw new Error("Empty response from Groq");
+
+      return { roleId: role.id, seniority, ...parseReportJSON(raw) };
+    } catch (err) {
+      lastError = err;
+      console.warn(
+        `Report generation failed on "${model}": ${(err as Error)?.message}`,
+      );
+    }
+  }
+
+  // Every model failed (or returned unparseable JSON). A finished interview
+  // must still produce a debrief, so fall back to a transcript-derived one
+  // rather than dropping the candidate on an error screen.
+  console.error("All report models failed — serving fallback report", lastError);
+  return buildFallbackReport(role, seniority, transcript);
+}
+
+/* ============================================================ *
+ * Deterministic fallback report — no LLM required.
+ * ============================================================ */
+
+/**
+ * Build a usable debrief straight from the transcript when every model
+ * call fails. Scores are derived from answer depth, so the report is
+ * honest about what it can measure and never fabricates feedback.
+ */
+function buildFallbackReport(
+  role: Role,
+  seniority: Seniority,
+  transcript: Message[],
+): Omit<InterviewReport, "_id" | "sessionId" | "generatedAt"> {
+  const questions = transcript.filter((m) => m.role === "assistant");
+  const answers = transcript.filter((m) => m.role === "user");
+
+  const words = answers.reduce(
+    (sum, a) => sum + a.content.trim().split(/\s+/).filter(Boolean).length,
+    0,
+  );
+  const avgWords = answers.length > 0 ? words / answers.length : 0;
+  // 40 words per answer ≈ a substantive response; scale to a 0-100 band
+  // centred on 65 so the number reads as "provisional", not authoritative.
+  const base = clamp(Math.round(40 + Math.min(avgWords, 80) * 0.45), 0, 100);
+
+  const breakdown: QuestionBreakdown[] = questions.map((q, i) => {
+    const answer = answers[i];
+    const answerWords = answer
+      ? answer.content.trim().split(/\s+/).filter(Boolean).length
+      : 0;
+    return {
+      questionIndex: i,
+      question: q.content.replace(/\[INTERVIEW_COMPLETE\]/g, "").trim(),
+      yourAnswer: answer?.content.trim() ?? "(no answer recorded)",
+      score: clamp(Math.round(Math.min(answerWords, 80) / 8), 0, 10),
+      feedback:
+        "Automatic grading was unavailable for this session, so this entry shows your answer as recorded. Re-run the interview for full per-question feedback.",
+      modelAnswer: `A strong ${seniority}-level answer would work through this out loud: state your approach, name the trade-offs you are weighing, and finish with how you would verify it. Model answers are written by the grader, which could not be reached for this session.`,
+      timestamp: q.timestamp,
+    };
   });
 
-  const raw = response.choices[0]?.message?.content;
-  if (!raw) throw new Error("Empty response from Groq");
+  const first = transcript[0]?.timestamp;
+  const last = transcript[transcript.length - 1]?.timestamp;
+  const durationMinutes =
+    first && last && last > first ? Math.round((last - first) / 60000) : 0;
 
-  return { roleId: role.id, seniority, ...parseReportJSON(raw) };
+  return {
+    roleId: role.id,
+    seniority,
+    overallScore: base,
+    scores: {
+      technicalDepth: base,
+      communicationClarity: base,
+      problemSolving: base,
+    },
+    verdict: `You completed ${answers.length} answer${answers.length === 1 ? "" : "s"} across ${questions.length} question${questions.length === 1 ? "" : "s"} in this ${seniority}-level ${role.name} interview. Detailed AI grading was unavailable, so this debrief shows your full transcript with provisional scores based on answer depth.`,
+    headline: `${role.name} interview — transcript recorded`,
+    questionBreakdown: breakdown,
+    strengths: [
+      `Completed ${answers.length} of ${questions.length} questions end to end.`,
+      `Averaged ${Math.round(avgWords)} words per answer.`,
+    ],
+    improvements: [
+      "Re-run this interview to get full AI-scored feedback per question.",
+    ],
+    recommendedResources: role.topics.slice(0, 3).map((topic) => ({
+      title: `Review: ${topic}`,
+      url: `https://developer.mozilla.org/en-US/search?q=${encodeURIComponent(topic)}`,
+      reason: `A core focus area for ${seniority}-level ${role.name} interviews.`,
+    })),
+    durationMinutes,
+  };
 }

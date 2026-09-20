@@ -1,16 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { SpeechService } from "@/services/speech.service";
+import {
+  SpeechService,
+  type ListenError,
+  type ListenMode,
+} from "@/services/speech.service";
 import TerminalWindow from "@/components/shared/TerminalWindow";
 import AsciiButton from "@/components/shared/AsciiButton";
 import { playClick } from "@/lib/sounds";
-import type { Seniority } from "@/types";
 
 interface VoiceInputProps {
+  /** Shared service — the same instance that speaks the questions. */
+  service: SpeechService | null;
   onSubmit: (text: string) => void;
   disabled: boolean;
-  seniority: Seniority;
   /** True while the interviewer's Cartesia audio is playing. */
   speaking: boolean;
   /** Called when the candidate taps the mic while the AI is speaking. */
@@ -20,37 +24,37 @@ interface VoiceInputProps {
 type MicState = "idle" | "listening" | "processing";
 
 export default function VoiceInput({
+  service,
   onSubmit,
   disabled,
-  seniority,
   speaking,
   onInterrupt,
 }: VoiceInputProps) {
   const [supported, setSupported] = useState(true);
   const [micState, setMicState] = useState<MicState>("idle");
   const [interim, setInterim] = useState("");
-  const serviceRef = useRef<SpeechService | null>(null);
+  const [listenMode, setListenMode] = useState<ListenMode>("browser");
+  const [micError, setMicError] = useState<ListenError | null>(null);
   const submittedRef = useRef(false);
 
   useEffect(() => {
-    setSupported(SpeechService.isRecognitionSupported());
-    serviceRef.current = new SpeechService(seniority);
-    const service = serviceRef.current;
-    return () => {
-      service?.stopListening();
-      service?.cancelSpeak();
-    };
-  }, [seniority]);
+    setSupported(SpeechService.isVoiceInputSupported());
+  }, []);
 
-  const handleSubmit = useCallback(
+  const handleFinal = useCallback(
     (text: string) => {
       if (submittedRef.current) return;
       const trimmed = text.trim();
-      if (!trimmed) return;
+      setMicState("idle");
+      if (!trimmed) {
+        // Nothing usable was captured — reopen the mic rather than
+        // sending an empty turn.
+        setInterim("");
+        return;
+      }
       submittedRef.current = true;
       setMicState("processing");
       setInterim("");
-      serviceRef.current?.stopListening();
       onSubmit(trimmed);
       setTimeout(() => {
         submittedRef.current = false;
@@ -61,42 +65,62 @@ export default function VoiceInput({
   );
 
   const startListening = useCallback(() => {
-    const service = serviceRef.current;
     if (!service || service.isListening) return;
-    if (!SpeechService.isRecognitionSupported()) return;
+    if (!SpeechService.isVoiceInputSupported()) return;
     submittedRef.current = false;
+    setMicError(null);
     setInterim("");
     setMicState("listening");
     service.startListening(
       (t) => setInterim(t),
-      (finalText) => {
-        if (!submittedRef.current) handleSubmit(finalText);
+      handleFinal,
+      (err) => {
+        setMicError(err);
+        setMicState("idle");
       },
+      (mode) => setListenMode(mode),
     );
-  }, [handleSubmit]);
+  }, [service, handleFinal]);
 
   // Auto-open the mic the moment the AI finishes speaking and it is the
   // candidate's turn — this is what makes it feel like a real conversation.
   useEffect(() => {
     if (
+      service &&
       !disabled &&
       !speaking &&
       supported &&
+      !micError &&
       micState === "idle" &&
       !submittedRef.current
     ) {
       startListening();
     }
-  }, [disabled, speaking, supported, micState, startListening]);
+  }, [
+    service,
+    disabled,
+    speaking,
+    supported,
+    micError,
+    micState,
+    startListening,
+  ]);
 
   function handleMicClick() {
     if (speaking) {
       onInterrupt(); // stop the AI — the effect above then opens the mic
       return;
     }
+    if (micError) {
+      startListening(); // retry after the candidate fixes permissions
+      return;
+    }
     if (disabled) return;
     if (micState === "listening") {
-      handleSubmit(interim);
+      // In Whisper mode the transcript arrives after upload, so let the
+      // service decide what "submit now" means for the active path.
+      setMicState("processing");
+      service?.submitNow();
       return;
     }
     if (micState === "idle") {
@@ -109,8 +133,8 @@ export default function VoiceInput({
       <div className="border border-border bg-surface px-4 py-4 text-[13px]">
         <div className="mb-1 text-danger">❯ voice input unsupported</div>
         <div className="leading-relaxed text-muted">
-          this browser can&apos;t transcribe speech — chrome or edge
-          recommended. restart in text mode to answer.
+          this browser can&apos;t capture audio — chrome or edge recommended.
+          restart in text mode to answer.
         </div>
       </div>
     );
@@ -119,23 +143,27 @@ export default function VoiceInput({
   const isListening = micState === "listening";
   const isProcessing = micState === "processing";
 
-  const micDotClass = speaking
-    ? "text-accent2"
-    : isListening
-      ? "animate-pulse text-danger"
-      : isProcessing
-        ? "text-muted"
-        : "text-dim";
-
-  const statusText = speaking
-    ? "interviewer speaking — tap to interrupt"
-    : isProcessing
-      ? "processing…"
+  const micDotClass = micError
+    ? "text-danger"
+    : speaking
+      ? "text-accent2"
       : isListening
-        ? "listening"
-        : disabled
-          ? "waiting for the interviewer…"
-          : "tap [ ● ] to answer";
+        ? "animate-pulse text-danger"
+        : isProcessing
+          ? "text-muted"
+          : "text-dim";
+
+  const statusText = micError
+    ? "mic unavailable — tap to retry"
+    : speaking
+      ? "interviewer speaking — tap to interrupt"
+      : isProcessing
+        ? "processing…"
+        : isListening
+          ? "listening"
+          : disabled
+            ? "waiting for the interviewer…"
+            : "tap [ ● ] to answer";
 
   return (
     <TerminalWindow title="recording">
@@ -147,7 +175,7 @@ export default function VoiceInput({
               if (!(disabled && !speaking)) playClick("toggle");
               handleMicClick();
             }}
-            disabled={disabled && !speaking}
+            disabled={disabled && !speaking && !micError}
             aria-label={
               speaking
                 ? "Interrupt the interviewer"
@@ -165,7 +193,18 @@ export default function VoiceInput({
           </span>
         </div>
 
-        <div className="mb-1 text-[12px] text-dim">live transcript:</div>
+        {micError && (
+          <div className="mb-3 border border-danger px-3 py-2 text-[12px] leading-relaxed text-danger">
+            ❯ {micError.message}
+          </div>
+        )}
+
+        <div className="mb-1 flex items-center justify-between text-[12px] text-dim">
+          <span>live transcript:</span>
+          {listenMode === "whisper" && (
+            <span className="text-accent2">[ whisper mode ]</span>
+          )}
+        </div>
         <div className="min-h-[2.6em] leading-relaxed text-paper">
           {interim || (
             <span className="text-dim">
@@ -185,7 +224,13 @@ export default function VoiceInput({
             [ auto-submits on silence · tap mic to submit now ]
           </span>
           {isListening && (
-            <AsciiButton sound="primary" onClick={() => handleSubmit(interim)}>
+            <AsciiButton
+              sound="primary"
+              onClick={() => {
+                setMicState("processing");
+                service?.submitNow();
+              }}
+            >
               submit <span className="btn-ret">↵</span>
             </AsciiButton>
           )}

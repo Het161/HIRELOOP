@@ -4,7 +4,10 @@ The site ships with **synthesized** click sounds (generated on the fly via the
 Web Audio API in `src/lib/sounds.ts`). They work without any files in this
 folder.
 
-If you want to swap in real samples, drop MP3s here with these exact names:
+If you want to swap in real samples, drop MP3s here with these exact names
+**and set `NEXT_PUBLIC_SOUND_SAMPLES=true`** in `.env.local`. Without that
+flag the app never requests these files, so a folder with no samples costs
+nothing (it used to fire seven 404s per page load):
 
 | File | Variant | Used for | Default volume |
 |---|---|---|---|

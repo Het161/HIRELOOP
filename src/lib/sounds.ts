@@ -69,7 +69,16 @@ function getContext(): AudioContext | null {
 const buffers = new Map<SoundVariant, AudioBuffer | null>();
 const loading = new Map<SoundVariant, Promise<AudioBuffer | null>>();
 
+/**
+ * Real MP3 samples are optional and none ship with the repo, so the
+ * fetch is opt-in: without this flag every page load fired seven 404s
+ * before falling back to the synth. Set NEXT_PUBLIC_SOUND_SAMPLES=true
+ * once files are in /public/sounds (see the README there).
+ */
+const SAMPLES_ENABLED = process.env.NEXT_PUBLIC_SOUND_SAMPLES === "true";
+
 async function loadBuffer(variant: SoundVariant): Promise<AudioBuffer | null> {
+  if (!SAMPLES_ENABLED) return null;
   if (buffers.has(variant)) return buffers.get(variant) ?? null;
   if (loading.has(variant)) return loading.get(variant)!;
   const audio = getContext();

@@ -36,7 +36,12 @@ export default function RevealWrapper({
           }
         }
       },
-      { threshold: 0.12, rootMargin: "0px 0px -8% 0px" },
+      // threshold 0, not a fraction of the element: a block taller than
+      // ~8x the viewport (a long question breakdown on a laptop screen)
+      // can never show 12% of itself at once, and would stay invisible
+      // forever. The rootMargin still holds the reveal until the block is
+      // properly on screen.
+      { threshold: 0, rootMargin: "0px 0px -8% 0px" },
     );
 
     observer.observe(el);

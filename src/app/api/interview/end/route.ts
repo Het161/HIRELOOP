@@ -47,12 +47,18 @@ export async function POST(req: Request): Promise<Response> {
       return Response.json({ error: "Unknown role" }, { status: 500 });
     }
 
-    await endSession(sessionId);
-
     // Tear down the Tavus video conversation to free the room + quota.
+    // Fire-and-forget: the candidate should never wait on it, and a
+    // Tavus outage must not block the debrief.
     if (session.tavusConversationId) {
-      await endTavusConversation(session.tavusConversationId);
+      void endTavusConversation(session.tavusConversationId).catch((err) => {
+        console.error("Tavus teardown failed:", err);
+      });
     }
+
+    // Close the session and grade in parallel — the write does not gate
+    // the ~5s grading call.
+    const closing = endSession(sessionId);
 
     const reportData = await generateReport(
       role,
@@ -66,6 +72,7 @@ export async function POST(req: Request): Promise<Response> {
       generatedAt: new Date(),
     };
 
+    await closing;
     const reportId = await saveReport(report);
     return Response.json({ reportId });
   } catch (err) {

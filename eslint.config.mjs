@@ -12,7 +12,10 @@ const compat = new FlatCompat({
 const eslintConfig = [
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
-    ignores: [".next/**", "out/**", "build/**", "next-env.d.ts"],
+    // `**/._*` — macOS AppleDouble sidecars. This repo lives on an exFAT
+    // volume, so every write regenerates them; they are binary and break
+    // the lint pass during `next build`.
+    ignores: [".next/**", "out/**", "build/**", "next-env.d.ts", "**/._*"],
   },
 ];
 

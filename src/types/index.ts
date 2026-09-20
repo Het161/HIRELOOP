@@ -125,7 +125,14 @@ export interface EndInterviewResponse {
 
 /** Server-Sent Event payload streamed from /api/interview/message. */
 export interface StreamEvent {
+  /** Raw token, for the live transcript. */
   chunk?: string;
+  /**
+   * A complete sentence, ready to be spoken. The server decides these
+   * boundaries so the interviewer never speaks text the server has
+   * trimmed (a second question, or the end-of-interview marker).
+   */
+  speak?: string;
   done?: boolean;
   fullText?: string;
   isComplete?: boolean;

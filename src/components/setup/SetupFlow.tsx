@@ -7,6 +7,7 @@ import DifficultyPicker from "./DifficultyPicker";
 import ModeToggle from "./ModeToggle";
 import TerminalWindow from "@/components/shared/TerminalWindow";
 import AsciiButton from "@/components/shared/AsciiButton";
+import Wordmark from "@/components/shared/Wordmark";
 import { getRole } from "@/lib/roles";
 import type { InterviewMode, Seniority, StartInterviewResponse } from "@/types";
 
@@ -76,6 +77,8 @@ export default function SetupFlow({
   return (
     <div className="bg-bg">
       <main className="mx-auto max-w-shell px-5 pb-36 pt-10 sm:px-8">
+        <Wordmark size="lg" className="mb-6" />
+
         <div className="mb-2 text-[12.5px] text-dim">
           &gt; ./configure-interview --role --seniority --mode
         </div>

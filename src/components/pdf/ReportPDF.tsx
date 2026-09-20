@@ -10,6 +10,7 @@
 import {
   Document,
   Font,
+  Image,
   Page,
   StyleSheet,
   Text,
@@ -19,22 +20,27 @@ import { formatDate, scoreBand, titleCase } from "@/lib/utils";
 import type { InterviewReport } from "@/types";
 
 /* ------------------------------------------------------------------ *
- * Font registration — .ttf files from jsDelivr / Google Fonts
+ * Font registration — self-hosted .ttf files from /public/fonts.
+ *
+ * These were WOFF files loaded from a CDN, which broke PDF export
+ * outright: react-pdf's font parser reads TTF only and threw
+ * "Offset is outside the bounds of the DataView" on every download.
+ * Serving TTFs from our own origin also means the export keeps working
+ * on a venue network that blocks or throttles third-party CDNs.
  * ------------------------------------------------------------------ */
 
-const GF_BASE =
-  "https://cdn.jsdelivr.net/npm/@fontsource";
+const FONT_BASE = "/fonts";
 
 Font.register({
   family: "JetBrains Mono",
   fonts: [
     {
-      src: `${GF_BASE}/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff`,
+      src: `${FONT_BASE}/JetBrainsMono-Regular.ttf`,
       fontWeight: 400,
       fontStyle: "normal",
     },
     {
-      src: `${GF_BASE}/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff`,
+      src: `${FONT_BASE}/JetBrainsMono-Medium.ttf`,
       fontWeight: 500,
       fontStyle: "normal",
     },
@@ -45,7 +51,7 @@ Font.register({
   family: "IBM Plex Sans",
   fonts: [
     {
-      src: `${GF_BASE}/ibm-plex-sans/files/ibm-plex-sans-latin-400-italic.woff`,
+      src: `${FONT_BASE}/IBMPlexSans-Italic.ttf`,
       fontWeight: 400,
       fontStyle: "italic",
     },
@@ -141,6 +147,16 @@ const s = StyleSheet.create({
     fontSize: 9,
     color: C.muted,
     letterSpacing: 1,
+  },
+  /* Logo in the action bar — height set, width follows the 1664:364 ratio. */
+  brandMark: {
+    height: 11,
+    width: 50,
+  },
+  /* Larger logo lockup in the footer. */
+  footerMark: {
+    height: 14,
+    width: 64,
   },
 
   /* Prompt line */
@@ -434,7 +450,11 @@ export function ReportPDF({ report, roleName }: ReportPDFProps) {
           <Text style={s.actionBarLeft}>
             ~/report · id: {report.sessionId}
           </Text>
-          <Text style={s.actionBarRight}>HIRELOOP DEBRIEF</Text>
+          {/* The wordmark asset is keyed to transparency, so it sits on
+              the page's dark field the same way it does in the app.
+              This is react-pdf's Image, not an <img> — it has no alt prop. */}
+          {/* eslint-disable-next-line jsx-a11y/alt-text */}
+          <Image src="/brand/wordmark.png" style={s.brandMark} />
         </View>
 
         {/* 2. Hero — prompt + score frame + headline */}
@@ -581,7 +601,8 @@ export function ReportPDF({ report, roleName }: ReportPDFProps) {
 
         {/* 8. Footer */}
         <View style={s.footer} wrap={false}>
-          <Text style={s.footerBrand}>hireloop</Text>
+          {/* eslint-disable-next-line jsx-a11y/alt-text */}
+          <Image src="/brand/wordmark.png" style={s.footerMark} />
           <Text style={s.footerDate}>
             Generated {formatDate(report.generatedAt)}
           </Text>

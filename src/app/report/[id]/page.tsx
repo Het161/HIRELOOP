@@ -10,6 +10,7 @@ import type { Metadata } from "next";
 import RevealWrapper from "@/components/shared/RevealWrapper";
 import AsciiDivider from "@/components/shared/AsciiDivider";
 import StatusBar from "@/components/shared/StatusBar";
+import Wordmark from "@/components/shared/Wordmark";
 
 import { ReportHero } from "@/components/report/ReportHero";
 import { SubScores } from "@/components/report/SubScores";
@@ -59,9 +60,13 @@ export default async function ReportPage({
       {/* ── Action bar ─────────────────────────────────────────── */}
       <div className="border-b border-border">
         <div className="mx-auto flex w-full max-w-shell items-center justify-between gap-3 px-5 py-3 text-[12.5px] sm:px-8">
-          <div className="truncate text-muted">
-            ~/report <span className="text-dim">·</span>id:{" "}
-            <span className="text-paper">{id}</span>
+          <div className="flex min-w-0 items-center gap-2.5 text-muted">
+            <Wordmark size="sm" />
+            <span className="text-dim">·</span>
+            <span className="truncate">
+              ~/report <span className="text-dim">·</span>id:{" "}
+              <span className="text-paper">{id}</span>
+            </span>
           </div>
           <div className="flex flex-none items-center gap-3">
             <ShareReportButton />

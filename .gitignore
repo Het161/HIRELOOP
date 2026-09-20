@@ -24,6 +24,9 @@
 .DS_Store
 *.pem
 
+# macOS AppleDouble sidecars (this repo lives on exFAT — they regenerate)
+._*
+
 # debug
 npm-debug.log*
 yarn-debug.log*

@@ -1,10 +1,13 @@
-import { CARTESIA_MODEL } from "@/lib/voices";
+import { CARTESIA_MODEL, VOICE_PARAMS } from "@/lib/voices";
 
 export const runtime = "nodejs"; // needs Node for streaming
 export const dynamic = "force-dynamic";
 
 const CARTESIA_TTS_URL = "https://api.cartesia.ai/tts/bytes";
-const CARTESIA_VERSION = "2024-06-10";
+const CARTESIA_VERSION = "2024-11-13";
+
+/** Cap per request — the client sends one sentence at a time. */
+const MAX_TEXT_CHARS = 1200;
 
 interface TTSRequestBody {
   text?: string;
@@ -13,30 +16,19 @@ interface TTSRequestBody {
   emotion?: string[];
 }
 
+interface SynthesisInput {
+  text: string;
+  voiceId: string;
+  speed: "slow" | "normal" | "fast";
+  emotion: string[];
+}
+
 /**
- * POST /api/tts — proxy a Cartesia Sonic text-to-speech request and
- * stream the MP3 audio bytes back to the client.
+ * Call Cartesia and return the streaming response. The MP3 bytes start
+ * arriving in ~130ms on a warm connection, well before the full clip is
+ * generated, so callers should pipe rather than buffer.
  */
-export async function POST(req: Request): Promise<Response> {
-  let body: TTSRequestBody;
-  try {
-    body = (await req.json()) as TTSRequestBody;
-  } catch {
-    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
-  }
-
-  const text = typeof body.text === "string" ? body.text.trim() : "";
-  const voiceId = typeof body.voiceId === "string" ? body.voiceId : "";
-  const speed = body.speed ?? "normal";
-  const emotion = Array.isArray(body.emotion) ? body.emotion : [];
-
-  if (!text || !voiceId) {
-    return Response.json(
-      { error: "text and voiceId are required" },
-      { status: 400 },
-    );
-  }
-
+async function synthesize(input: SynthesisInput): Promise<Response> {
   const apiKey = process.env.CARTESIA_API_KEY;
   if (!apiKey) {
     return Response.json(
@@ -56,11 +48,14 @@ export async function POST(req: Request): Promise<Response> {
       },
       body: JSON.stringify({
         model_id: CARTESIA_MODEL,
-        transcript: text,
+        transcript: input.text,
         voice: {
           mode: "id",
-          id: voiceId,
-          __experimental_controls: { speed, emotion },
+          id: input.voiceId,
+          __experimental_controls: {
+            speed: input.speed,
+            emotion: input.emotion,
+          },
         },
         output_format: {
           container: "mp3",
@@ -85,12 +80,86 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
-  // Stream the MP3 bytes straight through to the client.
+  // Stream the MP3 bytes straight through to the client — the <audio>
+  // element starts playing while Cartesia is still generating.
   return new Response(cartesiaRes.body, {
     headers: {
       "Content-Type": "audio/mpeg",
       "Cache-Control": "no-store",
+      "X-Accel-Buffering": "no",
     },
+  });
+}
+
+/**
+ * GET /api/tts?text=…&voiceId=… — streaming synthesis for `<audio src>`.
+ * A GET is what lets the browser play the clip progressively as bytes
+ * arrive; the POST form below buffers and is kept for callers that want
+ * the whole blob.
+ */
+export async function GET(req: Request): Promise<Response> {
+  const url = new URL(req.url);
+
+  // `?warm=1` opens the TLS connection to Cartesia ahead of the first
+  // real sentence, which otherwise pays ~700ms of handshake on stage.
+  if (url.searchParams.get("warm") === "1") {
+    const res = await synthesize({
+      text: "Ready.",
+      voiceId: url.searchParams.get("voiceId") ?? "",
+      speed: VOICE_PARAMS.speed,
+      emotion: VOICE_PARAMS.emotion,
+    });
+    await res.body?.cancel().catch(() => {});
+    return Response.json({ warm: res.ok });
+  }
+
+  const text = (url.searchParams.get("text") ?? "").trim();
+  const voiceId = url.searchParams.get("voiceId") ?? "";
+  const speedParam = url.searchParams.get("speed");
+  const speed =
+    speedParam === "slow" || speedParam === "fast" ? speedParam : "normal";
+
+  if (!text || !voiceId) {
+    return Response.json(
+      { error: "text and voiceId are required" },
+      { status: 400 },
+    );
+  }
+
+  return synthesize({
+    text: text.slice(0, MAX_TEXT_CHARS),
+    voiceId,
+    speed,
+    emotion: url.searchParams.getAll("emotion"),
+  });
+}
+
+/**
+ * POST /api/tts — same synthesis, for callers that post a JSON body.
+ */
+export async function POST(req: Request): Promise<Response> {
+  let body: TTSRequestBody;
+  try {
+    body = (await req.json()) as TTSRequestBody;
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const text = typeof body.text === "string" ? body.text.trim() : "";
+  const voiceId = typeof body.voiceId === "string" ? body.voiceId : "";
+
+  if (!text || !voiceId) {
+    return Response.json(
+      { error: "text and voiceId are required" },
+      { status: 400 },
+    );
+  }
+
+  return synthesize({
+    text: text.slice(0, MAX_TEXT_CHARS),
+    voiceId,
+    speed: body.speed ?? "normal",
+    emotion: Array.isArray(body.emotion) ? body.emotion : [],
   });
 }
 

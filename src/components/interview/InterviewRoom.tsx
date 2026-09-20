@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SpeechService } from "@/services/speech.service";
+import { INTERVIEW_SECONDS, MAX_QUESTIONS } from "@/lib/interview.config";
 import { getVoiceForSeniority } from "@/lib/voices";
 import TerminalWindow from "@/components/shared/TerminalWindow";
 import Prompt from "@/components/shared/Prompt";
 import AsciiButton from "@/components/shared/AsciiButton";
 import StatusBar from "@/components/shared/StatusBar";
+import Wordmark from "@/components/shared/Wordmark";
 import type { InterviewMode, Message, Seniority, StreamEvent } from "@/types";
 import InterviewerAvatar from "./InterviewerAvatar";
 import TranscriptView from "./TranscriptView";
@@ -50,7 +52,8 @@ export default function InterviewRoom({
   const [showEndDialog, setShowEndDialog] = useState(false);
   const [endError, setEndError] = useState<string | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [remaining, setRemaining] = useState(30 * 60);
+  const [audioBlocked, setAudioBlocked] = useState(false);
+  const [remaining, setRemaining] = useState(INTERVIEW_SECONDS);
 
   const lastUserMessageRef = useRef<string>("");
   const speechRef = useRef<SpeechService | null>(null);
@@ -59,24 +62,34 @@ export default function InterviewRoom({
   const voiceName =
     mode === "voice" ? getVoiceForSeniority(seniority).name : undefined;
 
-  // Cartesia TTS service (voice mode only).
+  // One SpeechService drives both the interviewer's voice and the
+  // candidate's mic, so interrupting the audio and opening the mic stay
+  // in sync (voice mode only).
+  const [speech, setSpeech] = useState<SpeechService | null>(null);
   useEffect(() => {
-    if (mode === "voice") {
-      speechRef.current = new SpeechService(seniority);
-    }
-    const service = speechRef.current;
+    if (mode !== "voice") return;
+
+    const service = new SpeechService(seniority);
+    service.onSpeakingChange = setIsSpeaking;
+    service.onAutoplayBlocked = () => setAudioBlocked(true);
+    speechRef.current = service;
+    setSpeech(service);
+
     return () => {
-      service?.cancelSpeak();
-      service?.stopListening();
+      service.cancelSpeak();
+      service.stopListening();
+      speechRef.current = null;
+      setSpeech(null);
     };
   }, [mode, seniority]);
 
-  // Warm up the TTS connection so the first question speaks instantly.
+  // Open the TLS connection to Cartesia before the first question needs
+  // it — a cold handshake costs ~700ms that would land as dead air.
   useEffect(() => {
-    if (mode === "voice") {
-      fetch("/api/tts", { method: "OPTIONS" }).catch(() => {});
-    }
-  }, [mode]);
+    if (mode !== "voice") return;
+    const voiceId = getVoiceForSeniority(seniority).id;
+    fetch(`/api/tts?warm=1&voiceId=${voiceId}`).catch(() => {});
+  }, [mode, seniority]);
 
   const sendTurn = useCallback(
     async (userMessage: string) => {
@@ -108,6 +121,12 @@ export default function InterviewRoom({
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+
+      // The server marks sentence boundaries and sends each finished
+      // sentence as it is generated, so the interviewer starts speaking
+      // while the rest of the turn is still being written.
+      const speaker = mode === "voice" ? speechRef.current : null;
+      speaker?.beginTurn();
 
       for (;;) {
         let done = false;
@@ -152,6 +171,10 @@ export default function InterviewRoom({
             setStreamingText((prev) => prev + chunk);
           }
 
+          if (event.speak) {
+            speaker?.speakSentence(event.speak);
+          }
+
           if (event.done && event.fullText !== undefined) {
             const cleaned = strip(event.fullText);
             const finalMsg: Message = {
@@ -168,14 +191,9 @@ export default function InterviewRoom({
               setPhase("awaiting-user");
             }
 
-            // Speak the full turn once streaming completes — Cartesia
-            // needs the whole sentence for natural prosody. The voice
-            // input auto-opens the mic once this resolves.
-            if (mode === "voice" && speechRef.current) {
-              setIsSpeaking(true);
-              await speechRef.current.speak(cleaned);
-              setIsSpeaking(false);
-            }
+            // Wait for the speech queue to drain — the voice input
+            // opens the mic once it does.
+            if (speaker) await speaker.endTurn();
           }
         }
       }
@@ -194,10 +212,7 @@ export default function InterviewRoom({
       const trimmed = text.trim();
       if (!trimmed) return;
 
-      if (mode === "voice") {
-        speechRef.current?.cancelSpeak();
-        setIsSpeaking(false);
-      }
+      speechRef.current?.cancelSpeak();
 
       lastUserMessageRef.current = trimmed;
 
@@ -210,7 +225,7 @@ export default function InterviewRoom({
       setPhase("loading");
       sendTurn(trimmed);
     },
-    [mode, sendTurn],
+    [sendTurn],
   );
 
   function handleRetry() {
@@ -220,7 +235,12 @@ export default function InterviewRoom({
   /** User taps the mic while the AI is still speaking — stop the audio. */
   function handleInterrupt() {
     speechRef.current?.cancelSpeak();
-    setIsSpeaking(false);
+  }
+
+  /** Browser blocked autoplay — a tap unlocks it and resumes the queue. */
+  async function handleUnlockAudio() {
+    const unlocked = await speechRef.current?.unlockAudio();
+    if (unlocked) setAudioBlocked(false);
   }
 
   async function endInterview() {
@@ -288,7 +308,7 @@ export default function InterviewRoom({
               </div>
               <div className="mb-4 text-dim leading-relaxed">
                 building your debrief — scored breakdown, per-question feedback,
-                and an improvement plan. this usually takes 10&ndash;20 seconds.
+                and an improvement plan. this usually takes about 5 seconds.
               </div>
               <div className="select-none tracking-widest text-accent">
                 ████████████████░░░░░░░░
@@ -308,11 +328,27 @@ export default function InterviewRoom({
         onCancel={() => setShowEndDialog(false)}
       />
 
+      {/* Autoplay gate — browsers block sound until the page is tapped. */}
+      {audioBlocked && (
+        <button
+          type="button"
+          onClick={handleUnlockAudio}
+          className="w-full border-b border-accent2 bg-surface px-5 py-2.5 text-left text-[13px] text-accent2 transition-colors hover:bg-border/40"
+        >
+          ❯ your browser muted the interviewer —{" "}
+          <span className="underline">tap here to enable audio</span>
+        </button>
+      )}
+
       {/* top bar */}
       <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3">
-        <div className="min-w-0 truncate text-[12.5px] text-muted">
-          ~/interview <span className="text-dim">·</span> session:{" "}
-          <span className="text-paper">{sessionId.slice(0, 12)}</span>
+        <div className="flex min-w-0 items-center gap-2.5 text-[12.5px] text-muted">
+          <Wordmark size="sm" />
+          <span className="text-dim">·</span>
+          <span className="truncate">
+            session:{" "}
+            <span className="text-paper">{sessionId.slice(0, 12)}</span>
+          </span>
         </div>
         <Timer onTick={setRemaining} />
         <AsciiButton
@@ -389,9 +425,9 @@ export default function InterviewRoom({
             <div className="mt-5">
               {mode === "voice" ? (
                 <VoiceInput
+                  service={speech}
                   onSubmit={handleUserSubmit}
                   disabled={phase !== "awaiting-user"}
-                  seniority={seniority}
                   speaking={isSpeaking}
                   onInterrupt={handleInterrupt}
                 />
@@ -412,7 +448,7 @@ export default function InterviewRoom({
             <span className="text-dim">❯ session:</span> {sessionId.slice(0, 8)}
             <span className="px-2 text-dim">·</span>role: {roleId || "—"}
             <span className="px-2 text-dim">·</span>question{" "}
-            {Math.max(1, questionNum)}/12
+            {Math.max(1, questionNum)}/{MAX_QUESTIONS}
             <span className="px-2 text-dim">·</span>mode: {mode}
           </>
         }

@@ -2,6 +2,7 @@ import Link from "next/link";
 import AsciiDivider from "@/components/shared/AsciiDivider";
 import RevealWrapper from "@/components/shared/RevealWrapper";
 import StatusBar from "@/components/shared/StatusBar";
+import Wordmark from "@/components/shared/Wordmark";
 import HeroHeadline from "@/components/landing/HeroHeadline";
 import LiveCounter from "@/components/landing/LiveCounter";
 import RoleChips from "@/components/landing/RoleChips";
@@ -32,6 +33,9 @@ export default function LandingPage() {
       <main>
         {/* ── Hero ────────────────────────────────────────────── */}
         <section className="mx-auto max-w-shell px-6 pb-20 pt-24 sm:px-11 sm:pt-36">
+          {/* Logo — the page's visual identity, above the headline. */}
+          <Wordmark size="xl" priority className="mb-9 sm:mb-11" />
+
           <div className="mb-7 select-none text-[13px] text-dim">
             &gt; ./start-interview --role any --mode voice|text
           </div>
@@ -200,7 +204,7 @@ export default function LandingPage() {
                 <div className="mb-3 text-muted">[ system ]</div>
                 <ul className="space-y-1.5 text-dim">
                   <li>
-                    <span className="text-accent">✓</span> groq · llama-3.3 ·
+                    <span className="text-accent">✓</span> groq · gpt-oss-120b ·
                     online
                   </li>
                   <li>
@@ -229,12 +233,15 @@ export default function LandingPage() {
                     → het@hireloop.dev
                   </li>
                   <li>
-                    <Link
-                      href="/feedback"
+                    {/* There is no /feedback route — this used to 404. */}
+                    <a
+                      href="https://github.com/het161/hireloop/issues"
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="transition-colors hover:text-paper"
                     >
-                      → /feedback
-                    </Link>
+                      → report an issue
+                    </a>
                   </li>
                 </ul>
               </div>
@@ -244,10 +251,10 @@ export default function LandingPage() {
               <AsciiDivider />
             </div>
 
-            <div className="text-[12.5px] text-muted">
-              <span className="text-accent2">❯</span> hireloop
-              <span className="mx-2 text-dim">·</span>
-              built by het
+            <div className="flex flex-wrap items-center text-[12.5px] text-muted">
+              <Wordmark size="sm" className="mr-2.5" />
+              <span className="text-dim">·</span>
+              <span className="mx-2">built by het</span>
               <span className="mx-2 text-dim">·</span>
               open source
               <span className="mx-2 text-dim">·</span>

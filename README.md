@@ -11,7 +11,8 @@ ASCII box-drawing, terminal-green + terracotta accents.
 
 - **Next.js 15** App Router + **TypeScript** (strict, no `any`)
 - **Tailwind CSS v3** + custom terminal design tokens
-- **Groq API** (Llama 3.3 70B) — the adaptive interviewer brain + report grading
+- **Groq API** (`openai/gpt-oss-120b`) — the adaptive interviewer brain + report grading
+- **Groq Whisper** (`whisper-large-v3-turbo`) — voice-input fallback for browsers without the Web Speech API
 - **Tavus CVI** — real-time photorealistic video interviewer (video mode), over Daily.co WebRTC
 - **Cartesia Sonic** — realistic interviewer voice (fallback when Tavus is unavailable)
 - **MongoDB Atlas** (Mongoose) — sessions + reports
@@ -38,10 +39,14 @@ ASCII box-drawing, terminal-green + terracotta accents.
    | `TAVUS_API_KEY`      | video    | https://platform.tavus.io — free dev account, 25 min     |
    | `TAVUS_REPLICA_ID`   | video    | https://platform.tavus.io/replicas — pick a stock face   |
    | `NEXT_PUBLIC_APP_URL`| video    | your public URL (see "Video mode" below)                 |
-   | `CARTESIA_API_KEY`   | optional | https://cartesia.ai — voice fallback                     |
+   | `CARTESIA_API_KEY`   | voice    | https://cartesia.ai — the interviewer's voice            |
+   | `GROQ_MODEL`         | optional | override the chat model (default `openai/gpt-oss-120b`)  |
+   | `NEXT_PUBLIC_SOUND_SAMPLES` | optional | `true` only if you added MP3s to `/public/sounds` |
 
-   **Text mode needs only Groq + MongoDB.** Video mode additionally needs the
-   three Tavus variables.
+   **Text mode needs only Groq.** Voice mode also needs `CARTESIA_API_KEY`.
+   `MONGODB_URI` is recommended but not required — without a reachable
+   database, interviews and reports run from memory for the life of the
+   server process (see "Running a live demo").
 
 3. **Run the dev server**
 
@@ -50,6 +55,50 @@ ASCII box-drawing, terminal-green + terracotta accents.
    ```
 
    Open http://localhost:3000.
+
+## Brand assets
+
+`public/logo.png` is the master artwork. Everything shown in the app is
+derived from it by `node scripts/generate-brand-assets.mjs`, which keys the
+logo's baked-in black field out to alpha (so it sits cleanly on `--bg` and
+`--surface`), then writes the wordmark, the square `h▊` mark, the favicon,
+the apple touch icon and the Open Graph card. Re-run it after replacing the
+master. Use the logo in a component through `<Wordmark />` rather than
+referencing the files directly.
+
+Note that `images.unoptimized` is set in `next.config.ts` — see the comment
+there before turning it back on.
+
+## Running a live demo
+
+Before presenting, run the preflight check and confirm `"status": "ok"`:
+
+```bash
+npm run build && npm start          # production build — much faster than `npm run dev`
+curl -s localhost:3000/api/health | python3 -m json.tool
+```
+
+It verifies that the configured Groq model still exists (a retired model id
+is otherwise invisible until a candidate is on screen), that Cartesia returns
+audio, that Whisper is available, and that MongoDB answers a ping. The server
+also warms all three connections on boot, so the first interview is as fast as
+the tenth — watch for the `[hireloop] warm-up complete` line.
+
+What to know before going on stage:
+
+- **Use Chrome or Edge.** The live word-by-word transcript uses the Web Speech
+  API. Safari and Firefox fall back to recording plus Whisper, which works but
+  only shows the transcript after you stop speaking.
+- **Serve over `localhost` or HTTPS.** Microphone access is blocked on a plain
+  `http://<lan-ip>` origin.
+- **Click once on the page before the first question** if your browser is set
+  to block autoplay. If audio is blocked, a banner appears offering to enable
+  it — the interview still runs, and the mic still opens.
+- **Watch the Groq tier.** A free key allows 8,000 tokens per minute; a full
+  12-question interview plus its report needs roughly 20k. The app trims
+  conversation history and fails over to a second model automatically, but a
+  paid tier removes the risk entirely. `/api/health` flags a low tier under
+  `groq:quota`.
 
 ## Video mode (Tavus) — local development needs ngrok
 
@@ -97,6 +146,17 @@ interview in the standard voice/text flow instead — nothing breaks.
 - **Graceful degradation** — if Tavus is unavailable (no key, quota, or a
   non-public URL), video mode falls back to the voice/text interview. Quota and
   connection errors surface as terminal-style messages, never browser alerts.
+  The same principle runs deeper: a dead database drops to an in-memory store,
+  a rate-limited or retired model fails over to the next model in the chain,
+  a failed TTS sentence is spoken by the browser voice, and a report that
+  cannot be graded still renders from the transcript.
+- **Low-latency voice** — the interviewer's turn is cut into sentences on the
+  server and each one is synthesised while the next is still being generated,
+  so speech begins about a second after you stop talking rather than after the
+  whole answer has been written.
+- **Interview length** — enforced server-side at 8–12 questions
+  (`src/lib/interview.config.ts`), with one question per turn. Left to the
+  model alone, it wrapped up after three or four.
 - **Cleanup** — ending an interview terminates the Tavus conversation, freeing
   the Daily room and your Tavus minutes.
 - Build for production with `npm run build`.

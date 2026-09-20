@@ -1,3 +1,4 @@
+import { MAX_QUESTIONS, MIN_QUESTIONS } from "@/lib/interview.config";
 import type { Message, Role, Seniority } from "@/types";
 
 /* ============================================================ *
@@ -6,12 +7,23 @@ import type { Message, Role, Seniority } from "@/types";
  * instructions to stay in character and emit clean JSON.
  * ============================================================ */
 
-/** Builds the system prompt that turns the LLM into the interviewer. */
+/**
+ * Builds the system prompt that turns the LLM into the interviewer.
+ * `finalTurn` tells it to close the interview on this turn, which keeps
+ * the length bounded instead of leaving it to the model's discretion.
+ */
 export function buildInterviewerSystemPrompt(
   role: Role,
   seniority: Seniority,
+  finalTurn = false,
 ): string {
-  return `You are a senior hiring manager at a top tech company conducting a ${seniority}-level ${role.name} interview.
+  const closing = finalTurn
+    ? `
+
+THIS IS YOUR FINAL TURN. Do not ask another question. Output the marker [INTERVIEW_COMPLETE] followed by one warm closing sentence thanking the candidate.`
+    : "";
+
+  return `You are a senior hiring manager at a top tech company conducting a ${seniority}-level ${role.name} interview.${closing}
 
 CRITICAL RULES — DO NOT BREAK THESE:
 - You ONLY output what you would SAY as the interviewer. Nothing else.
@@ -33,7 +45,7 @@ SPEECH STYLE (this will be spoken aloud by a TTS engine):
 
 INTERVIEW PLAN:
 - Duration: 30 minutes max
-- Ask 8-12 adaptive questions covering: ${role.topics.join(", ")}
+- Ask ${MIN_QUESTIONS}-${MAX_QUESTIONS} adaptive questions covering: ${role.topics.join(", ")}
 - Mix: ~40% conceptual, ~30% scenario-based, ~20% system/design, ~10% behavioral
 
 ADAPTIVE BEHAVIOR:
@@ -48,7 +60,8 @@ INTERVIEW START:
 Begin with ONE warm sentence intro + your first question. Example: "Thanks for joining. Let's start simple — can you tell me what makes React different from vanilla JS for building UIs?"
 
 INTERVIEW END:
-After 8-12 substantive questions OR when the conversation has covered enough ground, output EXACTLY this format on its own:
+- Do NOT end early. You must ask at least ${MIN_QUESTIONS} substantive questions before finishing, even if the candidate is struggling or answers briefly. If an answer is thin, move to a new topic from the list above — never wrap up instead.
+- Once you have asked ${MIN_QUESTIONS}-${MAX_QUESTIONS} questions, output EXACTLY this marker on its own line:
 [INTERVIEW_COMPLETE]
 Followed by a brief warm closing in one sentence.
 

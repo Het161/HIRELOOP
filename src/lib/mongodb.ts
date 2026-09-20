@@ -48,7 +48,18 @@ export async function connectDB(): Promise<typeof mongoose> {
   }
   if (cached.conn) return cached.conn;
   if (!cached.promise) {
-    cached.promise = mongoose.connect(MONGODB_URI, { bufferCommands: false });
+    cached.promise = mongoose.connect(MONGODB_URI, {
+      bufferCommands: false,
+      // Fail fast. The default server-selection timeout is 30s, which
+      // would freeze a live interview on an unreachable database; the
+      // caller falls back to the in-memory store instead.
+      serverSelectionTimeoutMS: 3_000,
+      connectTimeoutMS: 5_000,
+      socketTimeoutMS: 10_000,
+      maxPoolSize: 10,
+      minPoolSize: 1,
+      retryWrites: true,
+    });
   }
   try {
     cached.conn = await cached.promise;
@@ -132,24 +143,31 @@ export interface ReportDoc {
   generatedAt: Date;
 }
 
+/*
+ * Text fields default to "" rather than being `required`. Mongoose treats
+ * an empty string as a missing required value, so one blank `modelAnswer`
+ * from the grader — or from the transcript-derived fallback report — used
+ * to reject the entire report on save. A partial report must still be
+ * saved and shown; `src/services/ai.service.ts` already coerces types.
+ */
 const QuestionBreakdownSchema = new Schema<QuestionBreakdown>(
   {
     questionIndex: { type: Number, required: true },
-    question: { type: String, required: true },
-    yourAnswer: { type: String, required: true },
-    score: { type: Number, required: true },
-    feedback: { type: String, required: true },
-    modelAnswer: { type: String, required: true },
-    timestamp: { type: Number, required: true },
+    question: { type: String, default: "" },
+    yourAnswer: { type: String, default: "" },
+    score: { type: Number, default: 0 },
+    feedback: { type: String, default: "" },
+    modelAnswer: { type: String, default: "" },
+    timestamp: { type: Number, default: 0 },
   },
   { _id: false },
 );
 
 const ResourceSchema = new Schema<RecommendedResource>(
   {
-    title: { type: String, required: true },
-    url: { type: String, required: true },
-    reason: { type: String, required: true },
+    title: { type: String, default: "" },
+    url: { type: String, default: "" },
+    reason: { type: String, default: "" },
   },
   { _id: false },
 );
@@ -163,14 +181,14 @@ const ReportSchema = new Schema<ReportDoc>(
       enum: ["junior", "mid", "senior"],
       required: true,
     },
-    overallScore: { type: Number, required: true },
+    overallScore: { type: Number, default: 0 },
     scores: {
-      technicalDepth: { type: Number, required: true },
-      communicationClarity: { type: Number, required: true },
-      problemSolving: { type: Number, required: true },
+      technicalDepth: { type: Number, default: 0 },
+      communicationClarity: { type: Number, default: 0 },
+      problemSolving: { type: Number, default: 0 },
     },
-    verdict: { type: String, required: true },
-    headline: { type: String, required: true },
+    verdict: { type: String, default: "" },
+    headline: { type: String, default: "" },
     questionBreakdown: { type: [QuestionBreakdownSchema], default: [] },
     strengths: { type: [String], default: [] },
     improvements: { type: [String], default: [] },
