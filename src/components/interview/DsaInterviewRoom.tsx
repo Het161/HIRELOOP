@@ -167,7 +167,10 @@ export default function DsaInterviewRoom({
 
           if (event.done && event.fullText !== undefined) {
             const cleaned = strip(event.fullText);
-            const isKey = event.fullText.includes(KEY_MARKER);
+            // The server reports this as a flag now — control markers are
+            // stripped before the text leaves the route, so they can never
+            // be spoken or stored.
+            const isKey = event.isKey === true;
             const finalMsg: Message = {
               role: "assistant",
               content: cleaned,
