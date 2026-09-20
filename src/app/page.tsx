@@ -6,7 +6,9 @@ import Wordmark from "@/components/shared/Wordmark";
 import HeroHeadline from "@/components/landing/HeroHeadline";
 import LiveCounter from "@/components/landing/LiveCounter";
 import RoleChips from "@/components/landing/RoleChips";
-import { ROLES } from "@/lib/roles";
+import { getRole, ROLES } from "@/lib/roles";
+import { getInterviewStats } from "@/services/stats.service";
+import { GROQ_MODEL } from "@/services/ai.service";
 
 /* ============================================================ *
  * HireLoop — Landing Page (Server Component)
@@ -14,7 +16,18 @@ import { ROLES } from "@/lib/roles";
  * LiveCounter (count-up), RoleChips (hover tooltips).
  * ============================================================ */
 
-export default function LandingPage() {
+/**
+ * The activity numbers are real, so the page cannot be fully static.
+ * Re-rendered at most once a minute: fresh enough that an interview run
+ * on stage shows up, cheap enough that the landing page stays instant.
+ */
+export const revalidate = 60;
+
+export default async function LandingPage() {
+  const stats = await getInterviewStats();
+  const topRole = stats.topRoleId ? getRole(stats.topRoleId) : null;
+  const voiceReady = Boolean(process.env.CARTESIA_API_KEY);
+
   return (
     <>
       {/* ── Version sub-header ──────────────────────────────── */}
@@ -157,13 +170,26 @@ export default function LandingPage() {
             <span className="text-dim">❯ STATUS</span>
             <span className="pulse-dot ml-3" />
             <span className="ml-3">
-              <LiveCounter target={3127} />
+              <LiveCounter target={stats.completedThisWeek} />
             </span>
-            <span> interviews completed this week</span>
-            <span className="mx-2 text-dim">·</span>
-            avg score 71
-            <span className="mx-2 text-dim">·</span>
-            top role: backend developer
+            <span>
+              {" "}
+              {stats.completedThisWeek === 1 ? "interview" : "interviews"}{" "}
+              completed this week
+            </span>
+            {/* Segments only appear once there is data behind them. */}
+            {stats.averageScore !== null && (
+              <>
+                <span className="mx-2 text-dim">·</span>
+                avg score {stats.averageScore}
+              </>
+            )}
+            {topRole && (
+              <>
+                <span className="mx-2 text-dim">·</span>
+                top role: {topRole.name.toLowerCase()}
+              </>
+            )}
           </div>
         </div>
 
@@ -199,19 +225,40 @@ export default function LandingPage() {
                   </li>
                 </ul>
               </div>
-              {/* system */}
+              {/* system — reports the configuration this build is
+                  actually running, not a fixed "all green" list. */}
               <div>
                 <div className="mb-3 text-muted">[ system ]</div>
                 <ul className="space-y-1.5 text-dim">
                   <li>
-                    <span className="text-accent">✓</span> groq · gpt-oss-120b ·
-                    online
+                    <span className="text-accent">✓</span> groq ·{" "}
+                    {GROQ_MODEL.replace(/^openai\//, "")}
                   </li>
                   <li>
-                    <span className="text-accent">✓</span> speech engine · ready
+                    {voiceReady ? (
+                      <>
+                        <span className="text-accent">✓</span> speech engine ·
+                        ready
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-accent2">○</span> speech engine ·
+                        browser voice
+                      </>
+                    )}
                   </li>
                   <li>
-                    <span className="text-accent">✓</span> datastore · connected
+                    {stats.fromMemory ? (
+                      <>
+                        <span className="text-accent2">○</span> datastore ·
+                        in-memory
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-accent">✓</span> datastore ·
+                        connected
+                      </>
+                    )}
                   </li>
                 </ul>
               </div>
@@ -272,10 +319,17 @@ export default function LandingPage() {
           <>
             <span className="text-dim">❯ status</span>
             <span className="pulse-dot" />
-            <LiveCounter target={3127} />
-            <span>interviews this week</span>
-            <span className="text-dim">·</span>
-            <span>avg score 71</span>
+            <LiveCounter target={stats.interviewsThisWeek} />
+            <span>
+              {stats.interviewsThisWeek === 1 ? "interview" : "interviews"} this
+              week
+            </span>
+            {stats.averageScore !== null && (
+              <>
+                <span className="text-dim">·</span>
+                <span>avg score {stats.averageScore}</span>
+              </>
+            )}
           </>
         }
         right={<span className="text-dim">phosphor-dark</span>}
